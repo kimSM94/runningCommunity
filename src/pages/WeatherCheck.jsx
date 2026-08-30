@@ -70,7 +70,7 @@ export default function WeatherCheck() {
       const baseDate = `${year}${month}${day}`;
       const baseTime = `${hours}00`;
       
-      const url = `http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${KMA_API_KEY}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDate}&base_time=${baseTime}&nx=60&ny=127`;
+      const url = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${KMA_API_KEY}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDate}&base_time=${baseTime}&nx=60&ny=127`;
       
       const response = await fetch(url);
       const data = await response.json();
@@ -99,7 +99,7 @@ export default function WeatherCheck() {
       baseTime = '2300';
     }
 
-    const url = `http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${KMA_API_KEY}&pageNo=1&numOfRows=1000&dataType=JSON&base_date=${baseDate}&base_time=${baseTime}&nx=60&ny=127`;
+    const url = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${KMA_API_KEY}&pageNo=1&numOfRows=1000&dataType=JSON&base_date=${baseDate}&base_time=${baseTime}&nx=60&ny=127`;
     
     const response = await fetch(url);
     const data = await response.json();
@@ -164,7 +164,7 @@ export default function WeatherCheck() {
       tmFc = `${year}${month}${day}1800`;
     }
 
-    const url = `http://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst?serviceKey=${KMA_API_KEY}&pageNo=1&numOfRows=10&dataType=JSON&regId=11B00000&tmFc=${tmFc}`;
+    const url = `https://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst?serviceKey=${KMA_API_KEY}&pageNo=1&numOfRows=10&dataType=JSON&regId=11B00000&tmFc=${tmFc}`;
     
     const response = await fetch(url);
     const text = await response.text(); 
