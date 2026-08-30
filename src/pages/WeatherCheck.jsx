@@ -4,11 +4,9 @@ import { Link, useLocation } from 'react-router-dom';
 export default function WeatherCheck() {
   const location = useLocation();
 
-  // 💡 아래 두 줄을 복사해서 꼭 넣어주세요!
   console.log("🚀 마라톤에서 넘어온 원본 데이터:", location.state);
   console.log("변환 시도할 날짜:", location.state?.targetDate);
   
-  // 💡 1. 꼬인 날짜 완벽 파싱 로직 (파라미터 증발 해결!)
   const formatToYMD = (dateString) => {
     if (!dateString) return null;
     const cleanString = String(dateString).replace(/[년월일./]/g, '-').replace(/-+/g, '-').replace(/-$/, '');
@@ -43,18 +41,19 @@ export default function WeatherCheck() {
 
   const dDay = calculateDday(selectedDate);
 
+  // 🔥 팩트폭력 멘트로 완벽 교체!
   const getMotivation = (tmp, reh, pop) => {
     const temp = Number(tmp);
     const rain = Number(pop);
     const humid = Number(reh);
 
-    if (rain >= 50) return "비 온다고 안 뛰게? 우중런이 진짜 낭만인 거 알지! 핑계대지 마! 🌧️🏃‍♂️";
-    if (temp >= 30) return "덥다고 에어컨 밑에만 있을래? 이럴 때 뛰어야 진짜 일류다! 🔥💦";
-    if (temp <= 5) return "춥다고 이불 속에만 있을래? 5분만 뛰면 더워진다! ❄️🔥";
-    if (humid >= 80) return "습도 높다고? 자연 땀복 입었다고 럭키비키하게 생각해! 다이어트 개꿀! 💦";
-    if (temp > 10 && temp < 25 && rain < 20) return "이런 완벽한 날씨에 안 뛰면 유죄! 당장 러닝화 끈 묶고 튀어나가! 👟✨";
+    if (rain >= 50) return "비 온다고 쉴 핑계 찾았지? 30만 원짜리 카본화 방구석에 전시할 거면 당장 당근에 올려라. 우중런 가자 🌧️💸";
+    if (temp >= 30) return "더워서 못 뛴다고? 칼로리 소모 300kcal, 섭취 3000kcal. 훌륭한 벌크업이다 🐷🔥 땀으로 육수 뽑으러 당장 나가라!";
+    if (temp <= 5) return "춥다고 이불 덮고 있을 거면 스마트워치는 왜 샀냐? 추위 핑계 대면 네 기록은 영원히 땅바닥이다 ❄️🥶";
+    if (humid >= 80) return "습도 높다고 불평할 시간에 뛰었으면 벌써 5km다. 존2(Zone 2) 훈련하는 척하지 말고 그냥 뛰어라 💦🐢";
+    if (temp > 10 && temp < 25 && rain < 20) return "날씨 완벽한데 안 뛴다고? 신발은 엘리트급인데 엔진이 경운기면 날씨 좋을 때라도 굴려야지 🚜💨";
     
-    return "핑계 대지 말고 일단 신발부터 신어! 문밖을 나서는 게 제일 힘든 법이다! 🚪🏃‍♂️";
+    return "달린 시간보다 인스타 보정 시간이 더 길지? #오운완(오늘 운동복만 완벽했다) 찍으러 일단 나가자 📸👟";
   };
 
   const fetchCurrentLiveWeather = async () => {
@@ -190,15 +189,14 @@ export default function WeatherCheck() {
 
     const midPop = Number(rnSt) || 0;
     setTargetWeather({ isMid: true, pop: rnSt, wf: wf });
-    setMotivatingQuote(midPop >= 50 ? "며칠 뒤 비 소식이 있네? 우중런 낭만 챙길 준비 해둬! 🌧️" : "며칠 뒤 날씨 핑계는 못 댄다. 미리 뛸 코스나 짜둬라! 🗺️🏃‍♂️");
+    // 🔥 중기 예보용 멘트도 팩트폭력으로 교체!
+    setMotivatingQuote(midPop >= 50 ? "며칠 뒤 비 온다고? 일기예보 보면서 쉴 궁리부터 하네. 남들은 쿨다운할 때 뛰는 속도면서 벌써 쉬냐? 🌧️👀" : "며칠 뒤 날씨 핑계는 절대 못 댄다. GPS 튀었다고 우기지 말고 실력 키울 준비나 해라 ☀️🏃‍♂️");
     setWeatherResult({ type: 'mid', date: selectedDate, pop: rnSt, wf });
   };
 
-  // 💡 2. 가장 중요한 검색 트리거 함수! (에러 없도록 모든 함수 아래에 위치)
   const checkWeather = async () => {
     if (dDay < 0) return alert("과거의 날씨는 조회할 수 없습니다!");
     
-    // 기상청 API 한계 10일 방어 로직!
     if (dDay > 10) {
       alert("🚨 기상청 API는 최대 10일 후까지만 예보를 제공합니다!\n대회 10일 전에 다시 확인해주세요 😭");
       return; 
@@ -231,18 +229,16 @@ export default function WeatherCheck() {
     }
   };
 
-  // 💡 3. 화면 켜지자마자 자동 실행되는 마법!
   useEffect(() => {
     fetchCurrentLiveWeather();
 
-    // 마라톤 일정에서 넘어온 날짜가 존재하면, 살짝 텀을 주고 자동 조회 발사!
     if (passedDate) {
       setTimeout(() => {
         checkWeather();
       }, 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [passedDate]); // 전달된 날짜를 감지합니다.
+  }, [passedDate]);
 
   return (
     <div className="w-full min-h-screen bg-gray-50 font-sans text-gray-800 pb-10 overflow-x-hidden">
