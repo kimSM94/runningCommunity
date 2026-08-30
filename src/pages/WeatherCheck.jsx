@@ -41,19 +41,19 @@ export default function WeatherCheck() {
 
   const dDay = calculateDday(selectedDate);
 
-  // 🔥 팩트폭력 멘트로 완벽 교체!
+  // 🔥 핑계 차단! 마라맛 팩트폭력 멘트로 완벽 교체!
   const getMotivation = (tmp, reh, pop) => {
     const temp = Number(tmp);
     const rain = Number(pop);
     const humid = Number(reh);
 
-    if (rain >= 50) return "비 온다고 쉴 핑계 찾았지? 30만 원짜리 카본화 방구석에 전시할 거면 당장 당근에 올려라. 우중런 가자 🌧️💸";
-    if (temp >= 30) return "더워서 못 뛴다고? 칼로리 소모 300kcal, 섭취 3000kcal. 훌륭한 벌크업이다 🐷🔥 땀으로 육수 뽑으러 당장 나가라!";
-    if (temp <= 5) return "춥다고 이불 덮고 있을 거면 스마트워치는 왜 샀냐? 추위 핑계 대면 네 기록은 영원히 땅바닥이다 ❄️🥶";
-    if (humid >= 80) return "습도 높다고 불평할 시간에 뛰었으면 벌써 5km다. 존2(Zone 2) 훈련하는 척하지 말고 그냥 뛰어라 💦🐢";
-    if (temp > 10 && temp < 25 && rain < 20) return "날씨 완벽한데 안 뛴다고? 신발은 엘리트급인데 엔진이 경운기면 날씨 좋을 때라도 굴려야지 🚜💨";
+    if (rain >= 50) return "비 온다고 또 안 뛰게? 비 오면 안 뛰고, 덥다고 안 뛰고 춥다고 안 뛰면 대체 언제 뛰게? 그냥 평생 집구석에나 있어라 🌧️😤";
+    if (temp >= 30) return "오늘 또 안 뛰게? 덥다고 에어컨 밑에만 있을 거면 언제 뛰려고? 그럴 거면 러닝화 버리고 평생 집에 누워 있어라 🔥🛋️";
+    if (temp <= 5) return "오늘 또 안 뛰게? 춥다고 안 뛰고 덥다고 안 뛰면 언제 뛰게? 핑계 대지 말고 평생 겨울잠이나 자라 ❄️🥶";
+    if (humid >= 80) return "습도 핑계 대고 오늘 또 안 뛰게? 핑계 찾느라 머리 굴릴 시간에 그냥 평생 집에 있어라 💦🙄";
+    if (temp > 10 && temp < 25 && rain < 20) return "날씨가 이렇게 완벽한데 오늘 '또' 안 뛰게? 이 날씨에도 안 나갈 거면 그냥 평생 집에 있어라. 달리기 접어라 🌸👟";
     
-    return "달린 시간보다 인스타 보정 시간이 더 길지? #오운완(오늘 운동복만 완벽했다) 찍으러 일단 나가자 📸👟";
+    return "오늘 또 안 뛰게? 이 핑계 저 핑계 다 댈 거면 그냥 당장 앱 끄고 평생 집에나 있어라 😤";
   };
 
   const fetchCurrentLiveWeather = async () => {
@@ -189,8 +189,8 @@ export default function WeatherCheck() {
 
     const midPop = Number(rnSt) || 0;
     setTargetWeather({ isMid: true, pop: rnSt, wf: wf });
-    // 🔥 중기 예보용 멘트도 팩트폭력으로 교체!
-    setMotivatingQuote(midPop >= 50 ? "며칠 뒤 비 온다고? 일기예보 보면서 쉴 궁리부터 하네. 남들은 쿨다운할 때 뛰는 속도면서 벌써 쉬냐? 🌧️👀" : "며칠 뒤 날씨 핑계는 절대 못 댄다. GPS 튀었다고 우기지 말고 실력 키울 준비나 해라 ☀️🏃‍♂️");
+    // 🔥 중기 예보도 독하게 교체!
+    setMotivatingQuote(midPop >= 50 ? "며칠 뒤 비 온다고 벌써부터 쉴 핑계 찾지? 비 온다고 안 뛰고 덥다고 안 뛸 거면 평생 집에 있어라 🌧️👀" : "며칠 뒤 날씨 완벽한데 그때도 핑계 대고 안 뛰게? 뛸 생각 없으면 평생 집에나 있어라 ☀️🏃‍♂️");
     setWeatherResult({ type: 'mid', date: selectedDate, pop: rnSt, wf });
   };
 
