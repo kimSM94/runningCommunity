@@ -24,25 +24,6 @@ export default function App() {
   const [showOasis, setShowOasis] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
 
-  // 💡 Vercel 백엔드에서 안전하게 받아올 카카오 앱 키 상태
-  const [kakaoKey, setKakaoKey] = useState(null);
-
-  // 1. 서버에서 안전하게 카카오 API 키 가져오기
-  useEffect(() => {
-    const fetchKakaoKey = async () => {
-      try {
-        const res = await fetch('/api/map-key');
-        const data = await res.json();
-        if (data.apiKey) {
-          setKakaoKey(data.apiKey);
-        }
-      } catch (err) {
-        console.error('카카오 키를 불러오는 중 오류 발생:', err);
-      }
-    };
-    fetchKakaoKey();
-  }, []);
-
   const fetchOasisSpots = async () => {
     const { data, error } = await supabase.from('oasis_spots').select('*');
     if (!error && data) setOasisData(data);
@@ -100,26 +81,18 @@ export default function App() {
     setShowOasis(true);
   };
 
+  // 카카오맵으로 위치 쏴주는 함수
   const openKakaoMap = (name, lat, lng) => {
     const kakaoMapUrl = `https://map.kakao.com/link/map/${name},${lat},${lng}`;
     window.open(kakaoMapUrl, '_blank');
   };
-
-  // 💡 카카오 키가 아직 안 불려왔을 때의 로딩 처리 (지도가 하얗게 깨지는 것 방지)
-  if (!kakaoKey) {
-    return (
-      <div className="w-full h-screen bg-gray-50 flex flex-col justify-center items-center">
-        <div className="text-blue-600 font-black animate-pulse text-lg">보안 지도 시스템 로딩 중... 💧</div>
-      </div>
-    );
-  }
 
   return (
     <div className="w-full h-screen bg-gray-100 relative overflow-hidden font-sans">
       <header className="absolute top-0 left-0 w-full z-10 bg-white/90 backdrop-blur-md shadow-sm p-4 flex justify-between items-center border-b border-blue-100">
         <Link to="/" className="text-2xl">⬅️</Link>
         <h1 className="text-xl font-black text-blue-600 italic tracking-tighter">RUNNING OASIS 💧</h1>
-        <div className="w-8"></div>
+        <div className="w-8"></div> {/* 레이아웃 맞춤용 빈 공간 */}
       </header>
 
       <button 
@@ -129,9 +102,7 @@ export default function App() {
         <span className={isLocating ? 'animate-spin' : ''}>🎯</span>
       </button>
 
-      {/* 💡 서버에서 안전하게 가져온 appkey를 동적으로 주입 */}
       <Map 
-        appkey={kakaoKey}
         center={mapCenter} 
         style={{ width: '100%', height: '100vh' }} 
         level={5} 
