@@ -21,6 +21,7 @@ import ReceivedProposal from './pages/ReceivedProposal';
 import MarathonDetail from './pages/MarathonDetail'; 
 // 💡 새롭게 만든 훈련 플랜 페이지 불러오기
 import TrainingPlan from './pages/TrainingPlan'; 
+import RaceGuide from './pages/RaceGuide';
 
 // 🚀 모든 페이지 상단에 고정될 메뉴바 컴포넌트
 function GlobalHeaderAndNav() {
@@ -49,6 +50,9 @@ function GlobalHeaderAndNav() {
           {/* 💡 훈련계획 메뉴 추가! */}
           <li className={`p-3 ${path === '/training' ? 'border-b-2 border-blue-500' : ''}`}>
             <Link to="/training" className={`text-[13px] font-bold ${path === '/training' ? 'text-blue-600' : 'text-gray-700 hover:text-blue-600'}`}>📅 훈련계획</Link>
+          </li>
+          <li className={`p-3 ${path === '/guide' ? 'border-b-2 border-blue-500' : ''}`}>
+            <Link to="/guide" className={`text-[13px] font-bold ${path === '/guide' ? 'text-blue-600' : 'text-gray-700 hover:text-blue-600'}`}>📋 대회가이드</Link>
           </li>
           <li className={`p-3 ${path === '/map' ? 'border-b-2 border-blue-500' : ''}`}>
             <Link to="/map" className={`text-[13px] font-bold ${path === '/map' ? 'text-blue-600' : 'text-gray-700 hover:text-blue-600'}`}>💧 아리수</Link>
@@ -102,6 +106,7 @@ export default function App() {
         <Route path="/match/setup" element={<RunnerProfileSetup />} />
         <Route path="/match/received" element={<ReceivedProposal />} />
         <Route path="/training" element={<TrainingPlan />} />
+        <Route path="/guide" element={<RaceGuide />} />
       </Routes>
     </BrowserRouter>
   );
