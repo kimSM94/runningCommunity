@@ -182,54 +182,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 👟 2. 오늘의 추천 러너 미리보기 스트립 */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-neutral-200/80 mb-5">
-        <div className="flex justify-between items-center mb-3.5">
-          <div>
-            <h2 className="text-sm font-bold text-neutral-900">지금 매칭 가능한 러너</h2>
-            <p className="text-[11px] text-neutral-400">카드를 누르면 상세 프로필과 페이스 정보를 볼 수 있어요</p>
-          </div>
-          <button 
-            onClick={() => navigate('/match')}
-            className="text-xs font-bold text-neutral-900 bg-neutral-100 hover:bg-neutral-200 px-3 py-1.5 rounded-full transition-colors"
-          >
-            전체보기
-          </button>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2.5">
-          {featuredRunners.slice(0, 3).map((runner) => (
-            <div 
-              key={runner.id}
-              onClick={() => navigate('/match')}
-              className="cursor-pointer group border border-neutral-200 rounded-2xl overflow-hidden bg-white hover:border-neutral-400 transition-all"
-            >
-              <div className="relative aspect-[3/4] bg-neutral-100 overflow-hidden">
-                <img 
-                  src={runner.image_url} 
-                  alt={runner.nickname}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
-                {runner.verified && (
-                  <span className="absolute top-2 left-2 bg-white/90 text-neutral-900 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                    인증됨
-                  </span>
-                )}
-                <div className="absolute bottom-2 left-2.5 right-2 text-white">
-                  <div className="text-xs font-bold truncate">
-                    {runner.nickname}, {runner.age}
-                  </div>
-                  <div className="text-[10px] text-white/80 font-mono">
-                    {runner.pace} · {runner.region}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* 🧩 3. 핵심 기능 퀵 메뉴 (러닝 소개팅 1번 배치) */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div onClick={() => navigate('/match')} className="bg-white p-4 rounded-2xl shadow-sm border border-neutral-200/80 cursor-pointer hover:border-neutral-900 transition-all group">
@@ -238,7 +190,7 @@ export default function Home() {
             <span className="text-xs text-neutral-400 group-hover:translate-x-0.5 transition-transform">→</span>
           </div>
           <h3 className="font-bold text-neutral-900 text-sm mb-0.5">러닝 소개팅 (PACE MATE)</h3>
-          <p className="text-[11px] font-medium text-neutral-500">우리 동네 페이스 메이트 매칭</p>
+          <p className="text-[a11px] font-medium text-neutral-500">우리 동네 페이스 메이트 매칭</p>
         </div>
 
         <div onClick={() => navigate('/map')} className="bg-white p-4 rounded-2xl shadow-sm border border-neutral-200/80 cursor-pointer hover:border-blue-400 transition-all group">

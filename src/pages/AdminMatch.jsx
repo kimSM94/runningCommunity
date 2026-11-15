@@ -2,8 +2,133 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
-// 관리자 접속 PIN 번호 (원하시는 숫자로 변경하세요)
 const ADMIN_PIN = '1234';
+
+// 나이(만/한국나이 유추) -> 출생연도 뒤 2자리 변환 헬퍼
+const getBirthYearTwoDigits = (age) => {
+  if (!age) return null;
+  const currentYear = new Date().getFullYear();
+  const birthYear = currentYear - parseInt(age, 10) + 1;
+  return birthYear % 100;
+};
+
+// 희망 출생연도 텍스트(예: "93년생 ~ 99년생" 또는 "94~00") 파싱 및 일치 판별
+const checkBirthYearMatch = (idealText, targetAge) => {
+  if (!idealText || !targetAge) return { matched: true, reason: '연령 무관' };
+  const targetTwoDigits = getBirthYearTwoDigits(targetAge);
+  const fullBirthYear = new Date().getFullYear() - parseInt(targetAge, 10) + 1;
+
+  // 숫자 2자리 또는 4자리 추출
+  const numbers = idealText.match(/\d{2,4}/g);
+  if (!numbers || numbers.length === 0) return { matched: true, reason: '연령 조건 유연' };
+
+  const normalizedYears = numbers.map(n => {
+    const num = parseInt(n, 10);
+    if (num > 1900) return num;
+    return num <= 30 ? 2000 + num : 1900 + num;
+  });
+
+  if (normalizedYears.length >= 2) {
+    const minY = Math.min(...normalizedYears);
+    const maxY = Math.max(...normalizedYears);
+    const isOk = fullBirthYear >= minY && fullBirthYear <= maxY;
+    return {
+      matched: isOk,
+      reason: isOk ? `희망 연령대 일치 (${targetTwoDigits}년생)` : `연령 범위 외 (${targetTwoDigits}년생)`
+    };
+  } else {
+    const diff = Math.abs(fullBirthYear - normalizedYears[0]);
+    return {
+      matched: diff <= 4,
+      reason: diff <= 4 ? `희망 연령 인접 (${targetTwoDigits}년생)` : `연령 차이 있음 (${targetTwoDigits}년생)`
+    };
+  }
+};
+
+// 페이스 문자열("5'30\"") -> 초 단위 변환
+const paceToSeconds = (paceStr) => {
+  if (!paceStr) return 330;
+  const nums = paceStr.match(/\d+/g);
+  if (!nums || nums.length === 0) return 330;
+  const min = parseInt(nums[0], 10);
+  const sec = nums[1] ? parseInt(nums[1], 10) : 0;
+  return min * 60 + sec;
+};
+
+// 쌍방 매칭 가능성(%) 계산 엔진 (A <-> B 교차 검증)
+const calculateCompatibility = (userA, userB) => {
+  let score = 40; // 기본 베이스 점수 (같은 러닝 취미 공유)
+  const matchPoints = [];
+  const mismatchPoints = [];
+
+  // 1. A가 원하는 연령대에 B가 맞는지 & B가 원하는 연령대에 A가 맞는지 (최대 20점)
+  const aWantsBYear = checkBirthYearMatch(userA.ideal_birth_year, userB.age);
+  const bWantsAYear = checkBirthYearMatch(userB.ideal_birth_year, userA.age);
+  if (aWantsBYear.matched) {
+    score += 10;
+    matchPoints.push(`상대 연령 적합 (${bWantsAYear.matched ? '쌍방' : '단방향'})`);
+  } else {
+    mismatchPoints.push(aWantsBYear.reason);
+  }
+  if (bWantsAYear.matched) score += 10;
+
+  // 2. 성격 키워드 교집합 (최대 20점)
+  const aIdealPers = userA.ideal_personality || [];
+  const bActualPers = userB.personality || [];
+  const bIdealPers = userB.ideal_personality || [];
+  const aActualPers = userA.personality || [];
+
+  const commonAtoB = aIdealPers.filter(p => bActualPers.includes(p));
+  const commonBtoA = bIdealPers.filter(p => aActualPers.includes(p));
+
+  if (commonAtoB.length > 0) {
+    score += Math.min(10, commonAtoB.length * 4);
+    matchPoints.push(`희망 성격 일치 (#${commonAtoB.join(', #')})`);
+  }
+  if (commonBtoA.length > 0) {
+    score += Math.min(10, commonBtoA.length * 4);
+  }
+
+  // 3. MBTI 적합도 (최대 10점)
+  if (userA.ideal_mbti && userB.mbti) {
+    if (userA.ideal_mbti.includes('무관') || userA.ideal_mbti.toUpperCase().includes(userB.mbti.toUpperCase())) {
+      score += 5;
+      matchPoints.push(`희망 MBTI 부합 (${userB.mbti})`);
+    }
+  } else {
+    score += 3;
+  }
+  if (userB.ideal_mbti && userA.mbti) {
+    if (userB.ideal_mbti.includes('무관') || userB.ideal_mbti.toUpperCase().includes(userA.mbti.toUpperCase())) {
+      score += 5;
+    }
+  } else {
+    score += 2;
+  }
+
+  // 4. 활동 지역 / 러닝 코스 인접성 & 페이스 유사도 (최대 10점)
+  const aRegionTokens = (userA.ideal_region || userA.region || '').split(/[\s,·]+/).filter(Boolean);
+  const bRegionStr = `${userB.region || ''} ${userB.course || ''}`;
+  const regionHit = aRegionTokens.some(token => token.length >= 2 && bRegionStr.includes(token));
+  if (regionHit) {
+    score += 5;
+    matchPoints.push(`활동 지역/코스 인접 (${userB.region})`);
+  }
+
+  const paceDiff = Math.abs(paceToSeconds(userA.pace) - paceToSeconds(userB.pace));
+  if (paceDiff <= 50) {
+    score += 5;
+    matchPoints.push(`페이스 호흡 적합 (${userB.pace})`);
+  } else {
+    mismatchPoints.push(`페이스 차이 있음 (${userA.pace} vs ${userB.pace})`);
+  }
+
+  return {
+    percentage: Math.min(99, Math.max(35, score)),
+    matchPoints,
+    mismatchPoints
+  };
+};
 
 export default function AdminMatch() {
   const navigate = useNavigate();
@@ -12,10 +137,12 @@ export default function AdminMatch() {
   });
   const [pinInput, setPinInput] = useState('');
 
-  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'profiles'
-  const [requests, setRequests] = useState([]);
   const [profiles, setProfiles] = useState([]);
+  const [genderTab, setGenderTab] = useState('ALL'); // 'ALL' | '남성' | '여성'
   const [loading, setLoading] = useState(false);
+
+  // 특정 회원을 기준으로 매칭 적합도(%) 분석 모달 상태
+  const [analyzingRunner, setAnalyzingRunner] = useState(null);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -28,18 +155,19 @@ export default function AdminMatch() {
     }
   };
 
-  const fetchData = async () => {
+  const fetchProfiles = async () => {
     setLoading(true);
     try {
-      const [reqRes, profRes] = await Promise.all([
-        supabase.from('match_requests').select('*').order('created_at', { ascending: false }),
-        supabase.from('runner_profiles').select('*').order('created_at', { ascending: false })
-      ]);
+      const { data, error } = await supabase
+        .from('runner_profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      if (!reqRes.error && reqRes.data) setRequests(reqRes.data);
-      if (!profRes.error && profRes.data) setProfiles(profRes.data);
+      if (!error && data) {
+        setProfiles(data);
+      }
     } catch (err) {
-      console.error('관리자 데이터 조회 오류:', err);
+      console.error('프로필 조회 오류:', err);
     } finally {
       setLoading(false);
     }
@@ -47,32 +175,23 @@ export default function AdminMatch() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchData();
+      fetchProfiles();
     }
   }, [isAuthenticated]);
 
-  // 신청 상태 변경 (대기중 -> 카톡연결 -> 매칭완료)
-  const updateRequestStatus = async (id, newStatus) => {
+  // 매칭 진행 상태 변경
+  const updateMatchStatus = async (id, newStatus) => {
     const { error } = await supabase
-      .from('match_requests')
-      .update({ status: newStatus })
+      .from('runner_profiles')
+      .update({ match_status: newStatus })
       .eq('id', id);
 
     if (!error) {
-      setRequests(prev => prev.map(req => req.id === id ? { ...req, status: newStatus } : req));
+      setProfiles(prev => prev.map(p => p.id === id ? { ...p, match_status: newStatus } : p));
     }
   };
 
-  // 신청 내역 삭제
-  const deleteRequest = async (id) => {
-    if (!window.confirm('이 신청 내역을 삭제하시겠습니까?')) return;
-    const { error } = await supabase.from('match_requests').delete().eq('id', id);
-    if (!error) {
-      setRequests(prev => prev.filter(req => req.id !== id));
-    }
-  };
-
-  // 러너 프로필 GPS 인증 뱃지 수동 토글
+  // GPS 인증 수동 토글
   const toggleProfileVerify = async (id, currentStatus) => {
     const { error } = await supabase
       .from('runner_profiles')
@@ -84,28 +203,35 @@ export default function AdminMatch() {
     }
   };
 
-  // 러너 프로필 삭제
+  // 프로필 삭제
   const deleteProfile = async (id, nickname) => {
-    if (!window.confirm(`'${nickname}'님의 프로필을 완전히 삭제하시겠습니까?`)) return;
+    if (!window.confirm(`'${nickname}'님의 신청 프로필을 완전히 삭제하시겠습니까?`)) return;
     const { error } = await supabase.from('runner_profiles').delete().eq('id', id);
     if (!error) {
       setProfiles(prev => prev.filter(p => p.id !== id));
     }
   };
 
-  // 카톡 ID 원클릭 복사
-  const copyToClipboard = (text) => {
+  const copyToClipboard = (label, text) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
-    alert(`복사 완료: ${text}`);
+    alert(`${label} 복사 완료: ${text}`);
   };
 
-  const formatDate = (isoString) => {
-    if (!isoString) return '';
-    const d = new Date(isoString);
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  // 카톡 전달용 프로필 요약 텍스트 자동 생성 및 복사
+  const copyKakaoCardSummary = (target, partner) => {
+    const text = `[PACE MATE 매칭 프로필 안내]\n\n` +
+      `• 닉네임/나이: ${partner.nickname || partner.name} (${partner.age}세)\n` +
+      `• 거주/코스: ${partner.region} / ${partner.course}\n` +
+      `• 러닝스펙: 평균 페이스 ${partner.pace} · 주 ${partner.weekly_km}km\n` +
+      `• MBTI/성격: ${partner.mbti} (${(partner.personality || []).join(', ')})\n` +
+      `• 기본정보: ${partner.religion || '무교'} · ${partner.smoking || '비흡연'} · 문신 ${partner.tattoo || '없음'}\n` +
+      `• 자기소개: ${partner.bio}\n\n` +
+      `사진 확인 후 만남 의사를 회신해 주시면 연결 도와드리겠습니다!`;
+    navigator.clipboard.writeText(text);
+    alert(`${target.nickname}님에게 보낼 ${partner.nickname}님의 소개 카드 텍스트가 복사되었습니다!`);
   };
 
-  // 관리자 잠금 화면
   if (!isAuthenticated) {
     return (
       <div className="max-w-md mx-auto min-h-screen bg-neutral-50 flex items-center justify-center p-6">
@@ -142,235 +268,402 @@ export default function AdminMatch() {
     );
   }
 
-  const pendingCount = requests.filter(r => !r.status || r.status === '대기중').length;
+  const filteredProfiles = profiles.filter(p => {
+    if (genderTab === 'ALL') return true;
+    return p.gender === genderTab;
+  });
+
+  const maleCount = profiles.filter(p => p.gender === '남성').length;
+  const femaleCount = profiles.filter(p => p.gender === '여성').length;
+
+  // 선택된 회원의 반대 성별 후보군 계산 및 적합도(%) 내림차순 정렬
+  const candidateMatches = analyzingRunner
+    ? profiles
+        .filter(p => p.id !== analyzingRunner.id && p.gender !== analyzingRunner.gender)
+        .map(partner => ({
+          partner,
+          analysis: calculateCompatibility(analyzingRunner, partner)
+        }))
+        .sort((a, b) => b.analysis.percentage - a.analysis.percentage)
+    : [];
 
   return (
-    <div className="max-w-2xl mx-auto bg-neutral-50 min-h-screen text-neutral-900 pb-20 border-x border-neutral-200/60">
+    <div className="max-w-2xl mx-auto bg-neutral-50 min-h-screen text-neutral-900 pb-24 border-x border-neutral-200/60">
       
       {/* 상단 관리자 헤더 */}
       <header className="sticky top-0 z-20 bg-white border-b border-neutral-200 px-5 pt-4 pb-3">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/match')} className="text-xs font-semibold text-neutral-500 hover:text-neutral-900">
-              ← 소개팅 화면
+              ← 신청 페이지
             </button>
             <h1 className="text-base font-bold tracking-tight text-neutral-900">
               매칭 주선 관리자
             </h1>
           </div>
           <button
-            onClick={fetchData}
+            onClick={fetchProfiles}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-50"
           >
             {loading ? '동기화 중...' : '새로고침'}
           </button>
         </div>
 
-        {/* 요약 지표 카드 */}
+        {/* 성비 및 총원 요약 */}
         <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3">
-            <span className="text-[10px] font-semibold text-neutral-400 block">미처리 신청</span>
-            <span className="text-lg font-mono font-bold text-orange-600">{pendingCount}건</span>
+          <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2.5 text-center">
+            <span className="text-[10px] font-semibold text-neutral-400 block">전체 신청자</span>
+            <span className="text-base font-mono font-bold text-neutral-900">{profiles.length}명</span>
           </div>
-          <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3">
-            <span className="text-[10px] font-semibold text-neutral-400 block">누적 신청</span>
-            <span className="text-lg font-mono font-bold text-neutral-900">{requests.length}건</span>
+          <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 text-center">
+            <span className="text-[10px] font-semibold text-blue-600 block">남성 러너</span>
+            <span className="text-base font-mono font-bold text-blue-900">{maleCount}명</span>
           </div>
-          <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3">
-            <span className="text-[10px] font-semibold text-neutral-400 block">등록 러너</span>
-            <span className="text-lg font-mono font-bold text-neutral-900">{profiles.length}명</span>
+          <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-2.5 text-center">
+            <span className="text-[10px] font-semibold text-rose-600 block">여성 러너</span>
+            <span className="text-base font-mono font-bold text-rose-900">{femaleCount}명</span>
           </div>
         </div>
 
-        {/* 탭 전환 */}
-        <div className="flex gap-6 text-sm font-semibold">
-          <button
-            onClick={() => setActiveTab('requests')}
-            className={`pb-2 border-b-2 transition-colors ${
-              activeTab === 'requests'
-                ? 'border-neutral-900 text-neutral-900'
-                : 'border-transparent text-neutral-400'
-            }`}
-          >
-            매칭 신청 내역 ({requests.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('profiles')}
-            className={`pb-2 border-b-2 transition-colors ${
-              activeTab === 'profiles'
-                ? 'border-neutral-900 text-neutral-900'
-                : 'border-transparent text-neutral-400'
-            }`}
-          >
-            등록된 프로필 ({profiles.length})
-          </button>
+        {/* 성별 필터 탭 */}
+        <div className="flex gap-2">
+          {[
+            { key: 'ALL', label: `전체 (${profiles.length})` },
+            { key: '남성', label: `남성 (${maleCount})` },
+            { key: '여성', label: `여성 (${femaleCount})` }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setGenderTab(tab.key)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                genderTab === tab.key
+                  ? 'bg-neutral-900 text-white'
+                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </header>
 
-      {/* 탭 1: 매칭 신청 리스트 */}
-      {activeTab === 'requests' && (
-        <main className="p-5 space-y-3">
-          {requests.length === 0 ? (
-            <div className="text-center py-16 bg-white border border-neutral-200 rounded-2xl text-xs text-neutral-400">
-              아직 접수된 매칭 신청이 없습니다.
-            </div>
-          ) : (
-            requests.map((req) => {
-              const currentStatus = req.status || '대기중';
-              return (
-                <div key={req.id} className="bg-white border border-neutral-200 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                        currentStatus === '매칭성사'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : currentStatus === '카톡연결'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-orange-100 text-orange-800'
-                      }`}>
-                        {currentStatus}
-                      </span>
-                      <span className="text-xs font-bold text-neutral-900">
-                        {req.applicant_name} → {req.target_nickname}님
-                      </span>
-                    </div>
-                    <span className="text-[11px] font-mono text-neutral-400">
-                      {formatDate(req.created_at)}
+      {/* 신청자 프로필 카드 리스트 */}
+      <main className="p-5 space-y-5">
+        {filteredProfiles.length === 0 ? (
+          <div className="text-center py-16 bg-white border border-neutral-200 rounded-2xl text-xs text-neutral-400">
+            해당 조건의 신청자가 없습니다.
+          </div>
+        ) : (
+          filteredProfiles.map((prof) => {
+            const currentStatus = prof.match_status || '심사/매칭대기';
+            // 최고 매칭 가능성 미리 계산해서 배지로 표시
+            const bestPartner = profiles
+              .filter(other => other.id !== prof.id && other.gender !== prof.gender)
+              .map(other => calculateCompatibility(prof, other).percentage)
+              .sort((a, b) => b - a)[0];
+
+            return (
+              <div key={prof.id} className="bg-white border border-neutral-200 rounded-2xl p-5 space-y-4 shadow-sm">
+                
+                {/* 상단: 상태 배지 & 최고 매칭률 */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded ${
+                      currentStatus === '매칭성사'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : currentStatus === '프로필전달완료'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-neutral-900 text-white'
+                    }`}>
+                      {currentStatus}
+                    </span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                      prof.gender === '여성' ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'
+                    }`}>
+                      {prof.gender}
                     </span>
                   </div>
 
-                  {/* 신청자 카톡 ID 복사 영역 */}
-                  <div className="flex items-center justify-between bg-neutral-50 border border-neutral-200/80 rounded-xl px-3.5 py-2.5">
-                    <div>
-                      <span className="text-[10px] text-neutral-400 block">신청자 카톡 ID / 연락처</span>
-                      <span className="text-sm font-mono font-bold text-neutral-900">{req.applicant_kakao}</span>
-                    </div>
-                    <button
-                      onClick={() => copyToClipboard(req.applicant_kakao)}
-                      className="text-xs font-semibold bg-white border border-neutral-300 px-3 py-1.5 rounded-lg hover:bg-neutral-100"
-                    >
-                      ID 복사
-                    </button>
+                  {bestPartner !== undefined && (
+                    <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                      최고 적합도 {bestPartner}%
+                    </span>
+                  )}
+                </div>
+
+                {/* 사진 2장 및 기본 프로필 */}
+                <div className="flex items-start gap-3.5">
+                  <div className="flex gap-1.5 shrink-0">
+                    <a href={prof.image_url} target="_blank" rel="noopener noreferrer" title="사진 1 원본보기">
+                      <img src={prof.image_url} alt="" className="w-16 h-20 rounded-xl object-cover border border-neutral-200 hover:opacity-90" />
+                    </a>
+                    {prof.image_url_2 && (
+                      <a href={prof.image_url_2} target="_blank" rel="noopener noreferrer" title="사진 2 원본보기">
+                        <img src={prof.image_url_2} alt="" className="w-16 h-20 rounded-xl object-cover border border-neutral-200 hover:opacity-90" />
+                      </a>
+                    )}
                   </div>
 
-                  {/* 전달 메시지 */}
-                  <p className="text-xs text-neutral-700 bg-neutral-50/60 p-3 rounded-xl border border-neutral-100">
-                    "{req.message}"
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-base text-neutral-900">
+                      {prof.nickname || prof.name}, {prof.age}세
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      {prof.region} · {prof.course}
+                    </p>
+                    <p className="text-xs font-mono font-semibold text-neutral-800 mt-1">
+                      페이스 {prof.pace} · 주 {prof.weekly_km}km · {prof.mbti}
+                    </p>
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      {prof.religion || '무교'} · {prof.smoking || '비흡연'} · 문신 {prof.tattoo || '없음'}
+                    </p>
+                  </div>
+                </div>
 
-                  {/* 상태 변경 및 삭제 액션 바 */}
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex gap-1.5">
-                      {['대기중', '카톡연결', '매칭성사'].map(st => (
-                        <button
-                          key={st}
-                          onClick={() => updateRequestStatus(req.id, st)}
-                          className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
-                            currentStatus === st
-                              ? 'bg-neutral-900 text-white border-neutral-900 font-semibold'
-                              : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-400'
-                          }`}
-                        >
-                          {st}
-                        </button>
+                {/* 카카오톡 ID 원클릭 복사 바 */}
+                <div className="flex items-center justify-between bg-[#FEE500]/25 border border-[#FEE500] rounded-xl px-3.5 py-2.5">
+                  <div>
+                    <span className="text-[10px] font-semibold text-neutral-600 block">신청자 카카오톡 ID</span>
+                    <span className="text-sm font-mono font-bold text-neutral-900">{prof.kakao_id || '미입력'}</span>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard('카카오톡 ID', prof.kakao_id)}
+                    className="text-xs font-bold bg-neutral-900 text-white px-3 py-1.5 rounded-lg hover:bg-neutral-800"
+                  >
+                    카톡 ID 복사
+                  </button>
+                </div>
+
+                {/* 내 성격 & 자기소개 */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex flex-wrap gap-1">
+                    {(prof.personality || []).map((p, i) => (
+                      <span key={i} className="bg-neutral-100 text-neutral-800 font-semibold px-2 py-0.5 rounded">
+                        #{p}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-neutral-700 leading-relaxed bg-neutral-50 p-3 rounded-xl border border-neutral-100">
+                    {prof.bio}
+                  </p>
+                </div>
+
+                {/* 원하는 희망 파트너 조건 박스 */}
+                <div className="bg-neutral-900 text-white rounded-2xl p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold tracking-wider text-neutral-400 uppercase">
+                      원하는 파트너 희망 사항
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-neutral-400 text-[10px] block">희망 출생연도</span>
+                      <span className="font-semibold">{prof.ideal_birth_year || '무관'}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 text-[10px] block">희망 MBTI</span>
+                      <span className="font-semibold">{prof.ideal_mbti || '무관'}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 text-[10px] block">희망 직업</span>
+                      <span className="font-semibold">{prof.ideal_job || '무관'}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 text-[10px] block">희망 지역</span>
+                      <span className="font-semibold">{prof.ideal_region || '무관'}</span>
+                    </div>
+                  </div>
+                  {prof.ideal_personality && prof.ideal_personality.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {prof.ideal_personality.map((p, i) => (
+                        <span key={i} className="text-[10px] bg-white/15 text-white px-2 py-0.5 rounded">
+                          선호: {p}
+                        </span>
                       ))}
                     </div>
+                  )}
+                  {prof.ideal_description && (
+                    <p className="text-xs text-neutral-300 leading-relaxed pt-2 border-t border-white/10">
+                      "{prof.ideal_description}"
+                    </p>
+                  )}
+                </div>
+
+                {/* 핵심 액션 버튼: 적합한 상대 매칭률 분석 열기 */}
+                <button
+                  onClick={() => setAnalyzingRunner(prof)}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>이 회원과 적합한 상대 매칭 가능성(%) 분석하기</span>
+                </button>
+
+                {/* 하단 상태 변경 및 관리 바 */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-neutral-100">
+                  <div className="flex gap-1">
+                    {['심사/매칭대기', '프로필전달완료', '매칭성사'].map(st => (
+                      <button
+                        key={st}
+                        onClick={() => updateMatchStatus(prof.id, st)}
+                        className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                          currentStatus === st
+                            ? 'bg-neutral-900 text-white border-neutral-900 font-bold'
+                            : 'bg-white text-neutral-500 border-neutral-200'
+                        }`}
+                      >
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => deleteRequest(req.id)}
-                      className="text-[11px] text-neutral-400 hover:text-red-600 px-2 py-1"
+                      onClick={() => toggleProfileVerify(prof.id, prof.verified)}
+                      className={`text-[10px] font-semibold px-2 py-1 rounded border ${
+                        prof.verified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'text-neutral-400 border-neutral-200'
+                      }`}
+                    >
+                      {prof.verified ? 'GPS인증됨' : '인증부여'}
+                    </button>
+                    <button
+                      onClick={() => deleteProfile(prof.id, prof.nickname || prof.name)}
+                      className="text-[10px] font-semibold text-red-500 hover:underline"
                     >
                       삭제
                     </button>
                   </div>
                 </div>
-              );
-            })
-          )}
-        </main>
-      )}
+              </div>
+            );
+          })
+        )}
+      </main>
 
-      {/* 탭 2: 등록된 러너 프로필 관리 */}
-      {activeTab === 'profiles' && (
-        <main className="p-5 space-y-4">
-          {profiles.length === 0 ? (
-            <div className="text-center py-16 bg-white border border-neutral-200 rounded-2xl text-xs text-neutral-400">
-              DB에 등록된 러너 프로필이 없습니다.
+      {/* ================================================================= */}
+      {/* 적합 파트너 매칭 가능성(%) 분석 모달                              */}
+      {/* ================================================================= */}
+      {analyzingRunner && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            
+            <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between shrink-0 bg-neutral-50">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">AI MATCH ANALYZER</span>
+                <h3 className="text-base font-bold text-neutral-900">
+                  {analyzingRunner.nickname} ({analyzingRunner.age}세)님 맞춤 파트너 추천
+                </h3>
+              </div>
+              <button 
+                onClick={() => setAnalyzingRunner(null)}
+                className="text-neutral-400 hover:text-neutral-900 text-lg p-1"
+              >
+                ✕
+              </button>
             </div>
-          ) : (
-            profiles.map((prof) => (
-              <div key={prof.id} className="bg-white border border-neutral-200 rounded-2xl p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex -space-x-2 shrink-0">
-                      <img src={prof.image_url} alt="" className="w-14 h-14 rounded-xl object-cover border border-neutral-200" />
-                      {prof.image_url_2 && (
-                        <img src={prof.image_url_2} alt="" className="w-14 h-14 rounded-xl object-cover border-2 border-white shadow-sm" />
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              {/* 기준 회원의 희망 사항 리마인드 */}
+              <div className="p-3.5 bg-neutral-100 rounded-xl text-xs space-y-1">
+                <div className="font-bold text-neutral-900">기준 회원의 희망 조건:</div>
+                <div className="text-neutral-700">
+                  연령: {analyzingRunner.ideal_birth_year || '무관'} · MBTI: {analyzingRunner.ideal_mbti || '무관'} · 지역: {analyzingRunner.ideal_region || '무관'}
+                </div>
+                <div className="text-neutral-600 italic">"{analyzingRunner.ideal_description}"</div>
+              </div>
+
+              {candidateMatches.length === 0 ? (
+                <div className="text-center py-12 text-xs text-neutral-400">
+                  비교할 반대 성별의 등록 회원이 아직 없습니다.
+                </div>
+              ) : (
+                candidateMatches.map(({ partner, analysis }) => (
+                  <div key={partner.id} className="border border-neutral-200 rounded-2xl p-4 space-y-3 bg-white">
+                    
+                    {/* 매칭 가능성 % 게이지 바 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <img src={partner.image_url} alt="" className="w-10 h-10 rounded-full object-cover border border-neutral-200" />
+                          <div>
+                            <div className="font-bold text-sm text-neutral-900">
+                              {partner.nickname} ({partner.age}세)
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {partner.region} · {partner.pace} · {partner.mbti}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-neutral-400 block">쌍방 매칭 가능성</span>
+                          <span className={`text-xl font-mono font-black ${
+                            analysis.percentage >= 80 ? 'text-emerald-600' :
+                            analysis.percentage >= 65 ? 'text-blue-600' : 'text-neutral-700'
+                          }`}>
+                            {analysis.percentage}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${
+                            analysis.percentage >= 80 ? 'bg-emerald-500' :
+                            analysis.percentage >= 65 ? 'bg-blue-500' : 'bg-neutral-500'
+                          }`}
+                          style={{ width: `${analysis.percentage}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 일치 / 불일치 근거 태그 */}
+                    <div className="space-y-1.5 text-[11px]">
+                      {analysis.matchPoints.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {analysis.matchPoints.map((pt, i) => (
+                            <span key={i} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-medium">
+                              ✓ {pt}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {analysis.mismatchPoints.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {analysis.mismatchPoints.map((pt, i) => (
+                            <span key={i} className="bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded">
+                              △ {pt}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-sm text-neutral-900">
-                          {prof.nickname || prof.name} ({prof.age}세 · {prof.gender})
-                        </span>
-                      </div>
-                      <p className="text-xs text-neutral-500 mt-0.5">
-                        {prof.region} · {prof.course}
-                      </p>
-                      <p className="text-xs font-mono font-semibold text-neutral-800 mt-0.5">
-                        {prof.pace} · 주 {prof.weekly_km}km · {prof.mbti}
-                      </p>
-                    </div>
-                  </div>
-                </div>
 
-                {/* 상세 라이프스타일 & 희망 조건 요약 */}
-                <div className="bg-neutral-50 border border-neutral-100 rounded-xl p-3 text-xs space-y-1.5 text-neutral-700">
-                  <div>
-                    <span className="text-neutral-400 mr-2">기본정보:</span>
-                    <span>{prof.religion || '-'} / {prof.smoking || '-'} / 문신 {prof.tattoo || '-'}</span>
-                  </div>
-                  {prof.personality && prof.personality.length > 0 && (
-                    <div>
-                      <span className="text-neutral-400 mr-2">성격:</span>
-                      <span>{prof.personality.join(', ')}</span>
+                    {/* 상대방이 원하는 조건 요약 */}
+                    <div className="text-[11px] bg-neutral-50 p-2.5 rounded-xl text-neutral-600">
+                      <span className="font-bold text-neutral-800">{partner.nickname}님의 희망사항: </span>
+                      {partner.ideal_birth_year || '연령무관'} / {partner.ideal_mbti || 'MBTI무관'} / "{partner.ideal_description}"
                     </div>
-                  )}
-                  <div>
-                    <span className="text-neutral-400 mr-2">희망조건:</span>
-                    <span className="font-semibold">
-                      {prof.ideal_birth_year || '연령무관'} · {prof.ideal_mbti || 'MBTI무관'} · {prof.ideal_job || '직업무관'}
-                    </span>
-                  </div>
-                  {prof.ideal_description && (
-                    <p className="text-neutral-600 pt-1 border-t border-neutral-200/60">
-                      이상형 메모: "{prof.ideal_description}"
-                    </p>
-                  )}
-                </div>
 
-                {/* 인증 토글 및 삭제 버튼 */}
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    onClick={() => toggleProfileVerify(prof.id, prof.verified)}
-                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
-                      prof.verified
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-neutral-50 text-neutral-500 border-neutral-200'
-                    }`}
-                  >
-                    {prof.verified ? 'GPS 인증됨 (해제하기)' : '미인증 (수동 인증 부여)'}
-                  </button>
-                  <button
-                    onClick={() => deleteProfile(prof.id, prof.nickname || prof.name)}
-                    className="text-xs font-semibold text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    프로필 삭제
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </main>
+                    {/* 카톡 전달용 프로필 텍스트 원클릭 복사 버튼 */}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => copyKakaoCardSummary(analyzingRunner, partner)}
+                        className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-bold rounded-xl transition-colors"
+                      >
+                        {analyzingRunner.nickname}님께 보낼 프로필 텍스트 복사
+                      </button>
+                      <button
+                        onClick={() => copyToClipboard(`${partner.nickname}님 카톡 ID`, partner.kakao_id)}
+                        className="px-3 py-2.5 border border-neutral-300 text-neutral-700 text-[11px] font-bold rounded-xl hover:bg-neutral-50"
+                      >
+                        상대 카톡복사
+                      </button>
+                    </div>
+
+                  </div>
+                ))
+              )}
+            </div>
+
+          </div>
+        </div>
       )}
     </div>
   );
