@@ -86,7 +86,7 @@ function GlobalHeaderAndNav() {
 export default function App() {
   return (
     <BrowserRouter>
-      <GlobalHeaderAndNav />
+      {/* <GlobalHeaderAndNav /> */}
       
       <Routes>
         <Route path="/" element={<Home />} />     

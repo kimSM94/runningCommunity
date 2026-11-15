@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 
 const ADMIN_PIN = '1234';
 
-// 나이(만/한국나이 유추) -> 출생연도 뒤 2자리 변환 헬퍼
+// 나이 -> 출생연도 뒤 2자리 변환
 const getBirthYearTwoDigits = (age) => {
   if (!age) return null;
   const currentYear = new Date().getFullYear();
@@ -12,17 +12,16 @@ const getBirthYearTwoDigits = (age) => {
   return birthYear % 100;
 };
 
-// 희망 출생연도 텍스트(예: "93년생 ~ 99년생" 또는 "94~00") 파싱 및 일치 판별
+// 희망 출생연도 일치 판별
 const checkBirthYearMatch = (idealText, targetAge) => {
   if (!idealText || !targetAge) return { matched: true, reason: '연령 무관' };
   const targetTwoDigits = getBirthYearTwoDigits(targetAge);
   const fullBirthYear = new Date().getFullYear() - parseInt(targetAge, 10) + 1;
 
-  // 숫자 2자리 또는 4자리 추출
   const numbers = idealText.match(/\d{2,4}/g);
   if (!numbers || numbers.length === 0) return { matched: true, reason: '연령 조건 유연' };
 
-  const normalizedYears = numbers.map(n => {
+  const normalizedYears = numbers.map((n) => {
     const num = parseInt(n, 10);
     if (num > 1900) return num;
     return num <= 30 ? 2000 + num : 1900 + num;
@@ -34,18 +33,18 @@ const checkBirthYearMatch = (idealText, targetAge) => {
     const isOk = fullBirthYear >= minY && fullBirthYear <= maxY;
     return {
       matched: isOk,
-      reason: isOk ? `희망 연령대 일치 (${targetTwoDigits}년생)` : `연령 범위 외 (${targetTwoDigits}년생)`
+      reason: isOk ? `희망 연령대 일치 (${targetTwoDigits}년생)` : `연령 범위 외 (${targetTwoDigits}년생)`,
     };
   } else {
     const diff = Math.abs(fullBirthYear - normalizedYears[0]);
     return {
       matched: diff <= 4,
-      reason: diff <= 4 ? `희망 연령 인접 (${targetTwoDigits}년생)` : `연령 차이 있음 (${targetTwoDigits}년생)`
+      reason: diff <= 4 ? `희망 연령 인접 (${targetTwoDigits}년생)` : `연령 차이 있음 (${targetTwoDigits}년생)`,
     };
   }
 };
 
-// 페이스 문자열("5'30\"") -> 초 단위 변환
+// 페이스("5'30\"") -> 초 단위 변환
 const paceToSeconds = (paceStr) => {
   if (!paceStr) return 330;
   const nums = paceStr.match(/\d+/g);
@@ -55,13 +54,13 @@ const paceToSeconds = (paceStr) => {
   return min * 60 + sec;
 };
 
-// 쌍방 매칭 가능성(%) 계산 엔진 (A <-> B 교차 검증)
+// 쌍방 매칭 가능성(%) 계산 (A <-> B 교차 검증)
 const calculateCompatibility = (userA, userB) => {
-  let score = 40; // 기본 베이스 점수 (같은 러닝 취미 공유)
+  let score = 40;
   const matchPoints = [];
   const mismatchPoints = [];
 
-  // 1. A가 원하는 연령대에 B가 맞는지 & B가 원하는 연령대에 A가 맞는지 (최대 20점)
+  // 1. 연령대 적합도 (최대 20점)
   const aWantsBYear = checkBirthYearMatch(userA.ideal_birth_year, userB.age);
   const bWantsAYear = checkBirthYearMatch(userB.ideal_birth_year, userA.age);
   if (aWantsBYear.matched) {
@@ -78,8 +77,8 @@ const calculateCompatibility = (userA, userB) => {
   const bIdealPers = userB.ideal_personality || [];
   const aActualPers = userA.personality || [];
 
-  const commonAtoB = aIdealPers.filter(p => bActualPers.includes(p));
-  const commonBtoA = bIdealPers.filter(p => aActualPers.includes(p));
+  const commonAtoB = aIdealPers.filter((p) => bActualPers.includes(p));
+  const commonBtoA = bIdealPers.filter((p) => aActualPers.includes(p));
 
   if (commonAtoB.length > 0) {
     score += Math.min(10, commonAtoB.length * 4);
@@ -106,10 +105,10 @@ const calculateCompatibility = (userA, userB) => {
     score += 2;
   }
 
-  // 4. 활동 지역 / 러닝 코스 인접성 & 페이스 유사도 (최대 10점)
+  // 4. 활동 지역 및 페이스 유사도 (최대 10점)
   const aRegionTokens = (userA.ideal_region || userA.region || '').split(/[\s,·]+/).filter(Boolean);
   const bRegionStr = `${userB.region || ''} ${userB.course || ''}`;
-  const regionHit = aRegionTokens.some(token => token.length >= 2 && bRegionStr.includes(token));
+  const regionHit = aRegionTokens.some((token) => token.length >= 2 && bRegionStr.includes(token));
   if (regionHit) {
     score += 5;
     matchPoints.push(`활동 지역/코스 인접 (${userB.region})`);
@@ -126,7 +125,7 @@ const calculateCompatibility = (userA, userB) => {
   return {
     percentage: Math.min(99, Math.max(35, score)),
     matchPoints,
-    mismatchPoints
+    mismatchPoints,
   };
 };
 
@@ -138,10 +137,9 @@ export default function AdminMatch() {
   const [pinInput, setPinInput] = useState('');
 
   const [profiles, setProfiles] = useState([]);
-  const [genderTab, setGenderTab] = useState('ALL'); // 'ALL' | '남성' | '여성'
+  const [genderTab, setGenderTab] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // 특정 회원을 기준으로 매칭 적합도(%) 분석 모달 상태
   const [analyzingRunner, setAnalyzingRunner] = useState(null);
 
   const handleLogin = (e) => {
@@ -179,7 +177,6 @@ export default function AdminMatch() {
     }
   }, [isAuthenticated]);
 
-  // 매칭 진행 상태 변경
   const updateMatchStatus = async (id, newStatus) => {
     const { error } = await supabase
       .from('runner_profiles')
@@ -187,11 +184,10 @@ export default function AdminMatch() {
       .eq('id', id);
 
     if (!error) {
-      setProfiles(prev => prev.map(p => p.id === id ? { ...p, match_status: newStatus } : p));
+      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, match_status: newStatus } : p)));
     }
   };
 
-  // GPS 인증 수동 토글
   const toggleProfileVerify = async (id, currentStatus) => {
     const { error } = await supabase
       .from('runner_profiles')
@@ -199,16 +195,15 @@ export default function AdminMatch() {
       .eq('id', id);
 
     if (!error) {
-      setProfiles(prev => prev.map(p => p.id === id ? { ...p, verified: !currentStatus } : p));
+      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, verified: !currentStatus } : p)));
     }
   };
 
-  // 프로필 삭제
   const deleteProfile = async (id, nickname) => {
     if (!window.confirm(`'${nickname}'님의 신청 프로필을 완전히 삭제하시겠습니까?`)) return;
     const { error } = await supabase.from('runner_profiles').delete().eq('id', id);
     if (!error) {
-      setProfiles(prev => prev.filter(p => p.id !== id));
+      setProfiles((prev) => prev.filter((p) => p.id !== id));
     }
   };
 
@@ -218,9 +213,10 @@ export default function AdminMatch() {
     alert(`${label} 복사 완료: ${text}`);
   };
 
-  // 카톡 전달용 프로필 요약 텍스트 자동 생성 및 복사
   const copyKakaoCardSummary = (target, partner) => {
-    const text = `[PACE MATE 매칭 프로필 안내]\n\n` +
+    const text =
+      `[PACE MATE 매칭 프로필 안내]\n\n` +
+      `• 회원번호: #${partner.member_code || '0000'}\n` +
       `• 닉네임/나이: ${partner.nickname || partner.name} (${partner.age}세)\n` +
       `• 거주/코스: ${partner.region} / ${partner.course}\n` +
       `• 러닝스펙: 평균 페이스 ${partner.pace} · 주 ${partner.weekly_km}km\n` +
@@ -229,7 +225,7 @@ export default function AdminMatch() {
       `• 자기소개: ${partner.bio}\n\n` +
       `사진 확인 후 만남 의사를 회신해 주시면 연결 도와드리겠습니다!`;
     navigator.clipboard.writeText(text);
-    alert(`${target.nickname}님에게 보낼 ${partner.nickname}님의 소개 카드 텍스트가 복사되었습니다!`);
+    alert(`#${target.member_code || '0000'} ${target.nickname}님께 보낼 #${partner.member_code || '0000'} ${partner.nickname}님의 소개 카드가 복사되었습니다.`);
   };
 
   if (!isAuthenticated) {
@@ -268,21 +264,35 @@ export default function AdminMatch() {
     );
   }
 
-  const filteredProfiles = profiles.filter(p => {
-    if (genderTab === 'ALL') return true;
-    return p.gender === genderTab;
+  // 회원번호(#3312), 닉네임, 휴대폰 번호, 지역 즉시 검색 필터
+  const cleanQuery = searchQuery.replace(/^#/, '').trim().toLowerCase();
+  const filteredProfiles = profiles.filter((p) => {
+    const matchesGender = genderTab === 'ALL' || p.gender === genderTab;
+    if (!matchesGender) return false;
+    if (!cleanQuery) return true;
+
+    const codeStr = (p.member_code || '').toLowerCase();
+    const nameStr = (p.nickname || p.name || '').toLowerCase();
+    const phoneStr = (p.phone || '').replace(/-/g, '');
+    const regionStr = (p.region || '').toLowerCase();
+
+    return (
+      codeStr.includes(cleanQuery) ||
+      nameStr.includes(cleanQuery) ||
+      phoneStr.includes(cleanQuery.replace(/-/g, '')) ||
+      regionStr.includes(cleanQuery)
+    );
   });
 
-  const maleCount = profiles.filter(p => p.gender === '남성').length;
-  const femaleCount = profiles.filter(p => p.gender === '여성').length;
+  const maleCount = profiles.filter((p) => p.gender === '남성').length;
+  const femaleCount = profiles.filter((p) => p.gender === '여성').length;
 
-  // 선택된 회원의 반대 성별 후보군 계산 및 적합도(%) 내림차순 정렬
   const candidateMatches = analyzingRunner
     ? profiles
-        .filter(p => p.id !== analyzingRunner.id && p.gender !== analyzingRunner.gender)
-        .map(partner => ({
+        .filter((p) => p.id !== analyzingRunner.id && p.gender !== analyzingRunner.gender)
+        .map((partner) => ({
           partner,
-          analysis: calculateCompatibility(analyzingRunner, partner)
+          analysis: calculateCompatibility(analyzingRunner, partner),
         }))
         .sort((a, b) => b.analysis.percentage - a.analysis.percentage)
     : [];
@@ -291,8 +301,8 @@ export default function AdminMatch() {
     <div className="max-w-2xl mx-auto bg-neutral-50 min-h-screen text-neutral-900 pb-24 border-x border-neutral-200/60">
       
       {/* 상단 관리자 헤더 */}
-      <header className="sticky top-0 z-20 bg-white border-b border-neutral-200 px-5 pt-4 pb-3">
-        <div className="flex items-center justify-between mb-4">
+      <header className="sticky top-0 z-20 bg-white border-b border-neutral-200 px-5 pt-4 pb-3 space-y-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/match')} className="text-xs font-semibold text-neutral-500 hover:text-neutral-900">
               ← 신청 페이지
@@ -309,41 +319,51 @@ export default function AdminMatch() {
           </button>
         </div>
 
-        {/* 성비 및 총원 요약 */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2.5 text-center">
-            <span className="text-[10px] font-semibold text-neutral-400 block">전체 신청자</span>
-            <span className="text-base font-mono font-bold text-neutral-900">{profiles.length}명</span>
-          </div>
-          <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 text-center">
-            <span className="text-[10px] font-semibold text-blue-600 block">남성 러너</span>
-            <span className="text-base font-mono font-bold text-blue-900">{maleCount}명</span>
-          </div>
-          <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-2.5 text-center">
-            <span className="text-[10px] font-semibold text-rose-600 block">여성 러너</span>
-            <span className="text-base font-mono font-bold text-rose-900">{femaleCount}명</span>
-          </div>
+        {/* #회원번호 / 휴대폰 번호 / 닉네임 즉시 검색창 */}
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="회원번호(예: 3312), 닉네임, 휴대폰 번호로 즉시 검색..."
+            className="w-full bg-neutral-100 border border-neutral-200 focus:bg-white focus:border-neutral-900 rounded-xl pl-3.5 pr-10 py-2.5 text-xs font-medium outline-none transition-colors"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-900 text-xs font-bold"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         {/* 성별 필터 탭 */}
-        <div className="flex gap-2">
-          {[
-            { key: 'ALL', label: `전체 (${profiles.length})` },
-            { key: '남성', label: `남성 (${maleCount})` },
-            { key: '여성', label: `여성 (${femaleCount})` }
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setGenderTab(tab.key)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                genderTab === tab.key
-                  ? 'bg-neutral-900 text-white'
-                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1.5">
+            {[
+              { key: 'ALL', label: `전체 (${profiles.length})` },
+              { key: '남성', label: `남성 (${maleCount})` },
+              { key: '여성', label: `여성 (${femaleCount})` },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setGenderTab(tab.key)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                  genderTab === tab.key
+                    ? 'bg-neutral-900 text-white'
+                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {searchQuery && (
+            <span className="text-[11px] font-semibold text-neutral-500">
+              검색결과 {filteredProfiles.length}건
+            </span>
+          )}
         </div>
       </header>
 
@@ -351,36 +371,42 @@ export default function AdminMatch() {
       <main className="p-5 space-y-5">
         {filteredProfiles.length === 0 ? (
           <div className="text-center py-16 bg-white border border-neutral-200 rounded-2xl text-xs text-neutral-400">
-            해당 조건의 신청자가 없습니다.
+            일치하는 회원이 없습니다.
           </div>
         ) : (
           filteredProfiles.map((prof) => {
             const currentStatus = prof.match_status || '심사/매칭대기';
-            // 최고 매칭 가능성 미리 계산해서 배지로 표시
             const bestPartner = profiles
-              .filter(other => other.id !== prof.id && other.gender !== prof.gender)
-              .map(other => calculateCompatibility(prof, other).percentage)
+              .filter((other) => other.id !== prof.id && other.gender !== prof.gender)
+              .map((other) => calculateCompatibility(prof, other).percentage)
               .sort((a, b) => b - a)[0];
 
             return (
               <div key={prof.id} className="bg-white border border-neutral-200 rounded-2xl p-5 space-y-4 shadow-sm">
                 
-                {/* 상단: 상태 배지 & 최고 매칭률 */}
+                {/* 상단: 난수 회원번호(#3312) + 성별 + 진행상태 + 최고 적합도 */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded ${
-                      currentStatus === '매칭성사'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : currentStatus === '프로필전달완료'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-neutral-900 text-white'
-                    }`}>
-                      {currentStatus}
-                    </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => copyToClipboard('회원번호', `#${prof.member_code || '0000'}`)}
+                      className="text-xs font-mono font-black bg-neutral-900 text-white px-2.5 py-0.5 rounded hover:bg-neutral-700"
+                      title="클릭하여 번호 복사"
+                    >
+                      #{prof.member_code || '0000'}
+                    </button>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
                       prof.gender === '여성' ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'
                     }`}>
                       {prof.gender}
+                    </span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                      currentStatus === '매칭성사'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : currentStatus === '프로필전달완료'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-neutral-100 text-neutral-700'
+                    }`}>
+                      {currentStatus}
                     </span>
                   </div>
 
@@ -394,9 +420,11 @@ export default function AdminMatch() {
                 {/* 사진 2장 및 기본 프로필 */}
                 <div className="flex items-start gap-3.5">
                   <div className="flex gap-1.5 shrink-0">
-                    <a href={prof.image_url} target="_blank" rel="noopener noreferrer" title="사진 1 원본보기">
-                      <img src={prof.image_url} alt="" className="w-16 h-20 rounded-xl object-cover border border-neutral-200 hover:opacity-90" />
-                    </a>
+                    {prof.image_url && (
+                      <a href={prof.image_url} target="_blank" rel="noopener noreferrer" title="사진 1 원본보기">
+                        <img src={prof.image_url} alt="" className="w-16 h-20 rounded-xl object-cover border border-neutral-200 hover:opacity-90" />
+                      </a>
+                    )}
                     {prof.image_url_2 && (
                       <a href={prof.image_url_2} target="_blank" rel="noopener noreferrer" title="사진 2 원본보기">
                         <img src={prof.image_url_2} alt="" className="w-16 h-20 rounded-xl object-cover border border-neutral-200 hover:opacity-90" />
@@ -420,18 +448,37 @@ export default function AdminMatch() {
                   </div>
                 </div>
 
-                {/* 카카오톡 ID 원클릭 복사 바 */}
-                <div className="flex items-center justify-between bg-[#FEE500]/25 border border-[#FEE500] rounded-xl px-3.5 py-2.5">
-                  <div>
-                    <span className="text-[10px] font-semibold text-neutral-600 block">신청자 카카오톡 ID</span>
-                    <span className="text-sm font-mono font-bold text-neutral-900">{prof.kakao_id || '미입력'}</span>
+                {/* 휴대폰 번호 & 카카오톡 ID 복사 영역 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="flex items-center justify-between bg-neutral-100 border border-neutral-200 rounded-xl px-3.5 py-2.5">
+                    <div>
+                      <span className="text-[10px] font-semibold text-neutral-500 block">휴대폰 번호</span>
+                      <span className="text-sm font-mono font-bold text-neutral-900">{prof.phone || '미입력'}</span>
+                    </div>
+                    {prof.phone && (
+                      <button
+                        onClick={() => copyToClipboard('휴대폰 번호', prof.phone)}
+                        className="text-xs font-bold bg-neutral-900 text-white px-2.5 py-1.5 rounded-lg hover:bg-neutral-800"
+                      >
+                        번호 복사
+                      </button>
+                    )}
                   </div>
-                  <button
-                    onClick={() => copyToClipboard('카카오톡 ID', prof.kakao_id)}
-                    className="text-xs font-bold bg-neutral-900 text-white px-3 py-1.5 rounded-lg hover:bg-neutral-800"
-                  >
-                    카톡 ID 복사
-                  </button>
+
+                  <div className="flex items-center justify-between bg-[#FEE500]/25 border border-[#FEE500] rounded-xl px-3.5 py-2.5">
+                    <div className="truncate pr-2">
+                      <span className="text-[10px] font-semibold text-neutral-600 block">카카오톡 ID</span>
+                      <span className="text-sm font-mono font-bold text-neutral-900">{prof.kakao_id || '미입력'}</span>
+                    </div>
+                    {prof.kakao_id && (
+                      <button
+                        onClick={() => copyToClipboard('카카오톡 ID', prof.kakao_id)}
+                        className="text-xs font-bold bg-neutral-900 text-white px-2.5 py-1.5 rounded-lg hover:bg-neutral-800 shrink-0"
+                      >
+                        ID 복사
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* 내 성격 & 자기소개 */}
@@ -450,11 +497,9 @@ export default function AdminMatch() {
 
                 {/* 원하는 희망 파트너 조건 박스 */}
                 <div className="bg-neutral-900 text-white rounded-2xl p-4 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold tracking-wider text-neutral-400 uppercase">
-                      원하는 파트너 희망 사항
-                    </span>
-                  </div>
+                  <span className="text-[11px] font-bold tracking-wider text-neutral-400 uppercase block">
+                    원하는 파트너 희망 사항
+                  </span>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-neutral-400 text-[10px] block">희망 출생연도</span>
@@ -489,18 +534,18 @@ export default function AdminMatch() {
                   )}
                 </div>
 
-                {/* 핵심 액션 버튼: 적합한 상대 매칭률 분석 열기 */}
+                {/* 적합한 상대 매칭 가능성(%) 분석 버튼 */}
                 <button
                   onClick={() => setAnalyzingRunner(prof)}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors"
                 >
-                  <span>이 회원과 적합한 상대 매칭 가능성(%) 분석하기</span>
+                  #{prof.member_code || '0000'} {prof.nickname}님과 적합한 상대 매칭 가능성(%) 분석하기
                 </button>
 
                 {/* 하단 상태 변경 및 관리 바 */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-neutral-100">
                   <div className="flex gap-1">
-                    {['심사/매칭대기', '프로필전달완료', '매칭성사'].map(st => (
+                    {['심사/매칭대기', '프로필전달완료', '매칭성사'].map((st) => (
                       <button
                         key={st}
                         onClick={() => updateMatchStatus(prof.id, st)}
@@ -537,9 +582,7 @@ export default function AdminMatch() {
         )}
       </main>
 
-      {/* ================================================================= */}
-      {/* 적합 파트너 매칭 가능성(%) 분석 모달                              */}
-      {/* ================================================================= */}
+      {/* 적합 파트너 매칭 가능성(%) 분석 모달 */}
       {analyzingRunner && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-end sm:items-center justify-center">
           <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -548,10 +591,10 @@ export default function AdminMatch() {
               <div>
                 <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">AI MATCH ANALYZER</span>
                 <h3 className="text-base font-bold text-neutral-900">
-                  {analyzingRunner.nickname} ({analyzingRunner.age}세)님 맞춤 파트너 추천
+                  #{analyzingRunner.member_code || '0000'} {analyzingRunner.nickname} ({analyzingRunner.age}세)님 맞춤 파트너
                 </h3>
               </div>
-              <button 
+              <button
                 onClick={() => setAnalyzingRunner(null)}
                 className="text-neutral-400 hover:text-neutral-900 text-lg p-1"
               >
@@ -560,7 +603,6 @@ export default function AdminMatch() {
             </div>
 
             <div className="p-5 overflow-y-auto flex-1 space-y-4">
-              {/* 기준 회원의 희망 사항 리마인드 */}
               <div className="p-3.5 bg-neutral-100 rounded-xl text-xs space-y-1">
                 <div className="font-bold text-neutral-900">기준 회원의 희망 조건:</div>
                 <div className="text-neutral-700">
@@ -577,16 +619,22 @@ export default function AdminMatch() {
                 candidateMatches.map(({ partner, analysis }) => (
                   <div key={partner.id} className="border border-neutral-200 rounded-2xl p-4 space-y-3 bg-white">
                     
-                    {/* 매칭 가능성 % 게이지 바 */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
-                          <img src={partner.image_url} alt="" className="w-10 h-10 rounded-full object-cover border border-neutral-200" />
+                          {partner.image_url && (
+                            <img src={partner.image_url} alt="" className="w-10 h-10 rounded-full object-cover border border-neutral-200" />
+                          )}
                           <div>
-                            <div className="font-bold text-sm text-neutral-900">
-                              {partner.nickname} ({partner.age}세)
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-mono font-black bg-neutral-900 text-white px-1.5 py-0.5 rounded">
+                                #{partner.member_code || '0000'}
+                              </span>
+                              <span className="font-bold text-sm text-neutral-900">
+                                {partner.nickname} ({partner.age}세)
+                              </span>
                             </div>
-                            <div className="text-[11px] text-neutral-500">
+                            <div className="text-[11px] text-neutral-500 mt-0.5">
                               {partner.region} · {partner.pace} · {partner.mbti}
                             </div>
                           </div>
@@ -603,7 +651,7 @@ export default function AdminMatch() {
                       </div>
 
                       <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className={`h-full rounded-full ${
                             analysis.percentage >= 80 ? 'bg-emerald-500' :
                             analysis.percentage >= 65 ? 'bg-blue-500' : 'bg-neutral-500'
@@ -613,7 +661,6 @@ export default function AdminMatch() {
                       </div>
                     </div>
 
-                    {/* 일치 / 불일치 근거 태그 */}
                     <div className="space-y-1.5 text-[11px]">
                       {analysis.matchPoints.length > 0 && (
                         <div className="flex flex-wrap gap-1">
@@ -635,26 +682,26 @@ export default function AdminMatch() {
                       )}
                     </div>
 
-                    {/* 상대방이 원하는 조건 요약 */}
                     <div className="text-[11px] bg-neutral-50 p-2.5 rounded-xl text-neutral-600">
-                      <span className="font-bold text-neutral-800">{partner.nickname}님의 희망사항: </span>
+                      <span className="font-bold text-neutral-800">#{partner.member_code || '0000'} {partner.nickname}님의 희망사항: </span>
                       {partner.ideal_birth_year || '연령무관'} / {partner.ideal_mbti || 'MBTI무관'} / "{partner.ideal_description}"
                     </div>
 
-                    {/* 카톡 전달용 프로필 텍스트 원클릭 복사 버튼 */}
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={() => copyKakaoCardSummary(analyzingRunner, partner)}
                         className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-bold rounded-xl transition-colors"
                       >
-                        {analyzingRunner.nickname}님께 보낼 프로필 텍스트 복사
+                        #{analyzingRunner.member_code || '0000'}님께 보낼 소개글 복사
                       </button>
-                      <button
-                        onClick={() => copyToClipboard(`${partner.nickname}님 카톡 ID`, partner.kakao_id)}
-                        className="px-3 py-2.5 border border-neutral-300 text-neutral-700 text-[11px] font-bold rounded-xl hover:bg-neutral-50"
-                      >
-                        상대 카톡복사
-                      </button>
+                      {partner.phone && (
+                        <button
+                          onClick={() => copyToClipboard(`#${partner.member_code || '0000'} 휴대폰 번호`, partner.phone)}
+                          className="px-3 py-2.5 border border-neutral-300 text-neutral-700 text-[11px] font-bold rounded-xl hover:bg-neutral-50"
+                        >
+                          번호복사
+                        </button>
+                      )}
                     </div>
 
                   </div>
