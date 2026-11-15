@@ -9,7 +9,17 @@ const RELIGION_OPTIONS = ['무교', '기독교', '천주교', '불교', '기타'
 const SMOKING_OPTIONS = ['비흡연', '전자담배', '흡연'];
 const TATTOO_OPTIONS = ['없음', '작은 레터링/미니타투', '있음'];
 
-// 휴대폰 번호 자동 하이픈 포맷팅
+// 초기 풀 보강용 샘플 러너 스펙 (실제 DB 데이터가 6명 이상 쌓이면 자연스럽게 대체됨)
+const FALLBACK_POOL = [
+  { id: 's1', member_code: '7194', gender: '여성', age: 28, region: '서울 성동구', course: '서울숲 · 뚝섬한강', pace: "5'40\"", mbti: 'ENFP', personality: ['활발한', '다정한', '유머러스한'], verified: true },
+  { id: 's2', member_code: '3312', gender: '남성', age: 31, region: '서울 서초구', course: '반포한강 · 양재천', pace: "4'50\"", mbti: 'ISTJ', personality: ['진지한', '책임감 있는', '섬세한'], verified: true },
+  { id: 's3', member_code: '5028', gender: '여성', age: 26, region: '서울 송파구', course: '석촌호수 · 올림픽공원', pace: "6'10\"", mbti: 'ISFP', personality: ['차분한', '긍정적인', '다정한'], verified: false },
+  { id: 's4', member_code: '8461', gender: '남성', age: 33, region: '서울 마포구', course: '망원한강 · 여의도', pace: "5'15\"", mbti: 'ENFJ', personality: ['다정한', '책임감 있는', '긍정적인'], verified: true },
+  { id: 's5', member_code: '1925', gender: '여성', age: 30, region: '서울 강남구', course: '탄천 · 잠실한강', pace: "5'25\"", mbti: 'INFJ', personality: ['섬세한', '차분한', '진지한'], verified: true },
+  { id: 's6', member_code: '6307', gender: '남성', age: 29, region: '서울 용산구', course: '이촌한강 · 남산', pace: "5'05\"", mbti: 'ENTP', personality: ['유머러스한', '활발한', '즉흥적인'], verified: false }
+];
+
+// 휴대폰 번호 자동 하이픈 포맷팅 (010-0000-0000)
 const formatPhoneNumber = (value) => {
   const nums = value.replace(/\D/g, '').slice(0, 11);
   if (nums.length <= 3) return nums;
@@ -21,7 +31,7 @@ export default function RunMatch() {
   const navigate = useNavigate();
 
   const [anonymousPool, setAnonymousPool] = useState([]);
-  const [submittedCode, setSubmittedCode] = useState(null); // 방금 발급받은 내 4자리 번호
+  const [submittedCode, setSubmittedCode] = useState(null);
 
   // 3단계 프로필 등록 위자드 상태
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -57,23 +67,21 @@ export default function RunMatch() {
     ideal_description: ''
   });
 
-  // DB에서 사진/이름/연락처 제외한 익명 스펙 + 4자리 난수코드 조회
+  // 실제 DB 신청자 + 샘플 데이터를 병합하여 최소 6명 이상의 남녀 균형 풀 구성
   const fetchAnonymousPool = async () => {
     const { data, error } = await supabase
       .from('runner_profiles')
       .select('id, member_code, gender, age, region, course, pace, mbti, personality, verified')
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(12);
 
-    if (!error && data && data.length > 0) {
-      setAnonymousPool(data);
-    } else {
-      setAnonymousPool([
-        { id: '1', member_code: '3312', gender: '남성', age: 31, region: '서울 서초구', course: '반포한강', pace: "4'50\"", mbti: 'ISTJ', personality: ['진지한', '책임감 있는', '섬세한'], verified: true },
-        { id: '2', member_code: '7194', gender: '여성', age: 28, region: '서울 성동구', course: '서울숲·뚝섬', pace: "5'40\"", mbti: 'ENFP', personality: ['활발한', '다정한', '유머러스한'], verified: true },
-        { id: '3', member_code: '5028', gender: '여성', age: 26, region: '서울 송파구', course: '석촌호수', pace: "6'10\"", mbti: 'ISFP', personality: ['차분한', '긍정적인', '다정한'], verified: false }
-      ]);
-    }
+    const realData = (!error && data) ? data : [];
+    const existingCodes = new Set(realData.map(item => item.member_code));
+    const fillers = FALLBACK_POOL.filter(sample => !existingCodes.has(sample.member_code));
+
+    // 실제 데이터를 앞에 두고, 부족한 수만큼 샘플을 자연스럽게 이어 붙여 최소 6개 유지
+    const combined = [...realData, ...fillers].slice(0, Math.max(6, realData.length));
+    setAnonymousPool(combined);
   };
 
   useEffect(() => {
@@ -90,7 +98,9 @@ export default function RunMatch() {
         .eq('member_code', candidate)
         .maybeSingle();
 
-      if (!data) return candidate;
+      if (!data && !FALLBACK_POOL.some(s => s.member_code === candidate)) {
+        return candidate;
+      }
     }
     return String(Math.floor(1000 + Math.random() * 9000));
   };
@@ -157,11 +167,16 @@ export default function RunMatch() {
   const handleNextStep = () => {
     if (registerStep === 1) {
       if (!photoPreviews[0] || !photoPreviews[1]) {
-        alert('매칭 주선 시 상대방에게만 전달할 사진 2장을 등록해 주세요.');
+        alert('매칭 주선 시 상대방에게만 전달할 사진 2장을 모두 등록해 주세요.');
         return;
       }
-      if (!formData.nickname.trim() || formData.phone.length < 12 || !formData.age) {
-        alert('닉네임, 휴대폰 번호(11자리), 나이를 모두 정확히 입력해 주세요.');
+      const purePhoneDigits = formData.phone.replace(/\D/g, '');
+      if (purePhoneDigits.length < 10 || !purePhoneDigits.startsWith('01')) {
+        alert('연락받으실 휴대폰 번호(010-0000-0000)를 정확히 입력해 주세요.');
+        return;
+      }
+      if (!formData.nickname.trim() || !formData.age) {
+        alert('닉네임과 나이를 모두 입력해 주세요.');
         return;
       }
       if (formData.personality.length !== 3) {
@@ -183,6 +198,13 @@ export default function RunMatch() {
   };
 
   const handleFinalSubmit = async () => {
+    const purePhoneDigits = formData.phone.replace(/\D/g, '');
+    if (purePhoneDigits.length < 10) {
+      alert('휴대폰 번호가 올바르지 않습니다. 1단계에서 번호를 확인해 주세요.');
+      setRegisterStep(1);
+      return;
+    }
+
     setIsSubmitting(true);
     let uploadedUrls = ['', ''];
 
@@ -309,7 +331,7 @@ export default function RunMatch() {
               </span>
             </div>
             <p className="text-xs text-neutral-600 leading-relaxed">
-              입력하신 휴대폰 번호로 매니저가 카카오톡 안내를 드립니다. 하단 대기 러너 중 마음에 드는 번호가 있다면 카톡으로 <strong>"#번호 소개팅 신청합니다"</strong>라고 바로 말씀해 주세요!
+              등록하신 휴대폰 번호로 매니저가 카카오톡 안내를 드립니다. 하단 매칭 풀 중 마음에 드는 번호가 있다면 카톡으로 <strong>"#번호 소개팅 부탁드립니다"</strong>라고 바로 말씀해 주세요!
             </p>
             <a
               href={KAKAO_OPENCHAT_URL}
@@ -322,11 +344,11 @@ export default function RunMatch() {
           </section>
         )}
 
-        {/* 2. 현재 매칭 대기 중인 러너 (고유 난수번호 + 익명 스펙 노출) */}
+        {/* 2. 현재 매칭 가능한 러너 풀 (일부 공개) */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-neutral-900">현재 매칭 대기 중인 러너</h3>
+              <h3 className="text-sm font-bold text-neutral-900">현재 매칭 가능한 러너 풀 (일부 공개)</h3>
               <p className="text-[11px] text-neutral-400">마음에 드는 회원번호(#)를 기억해 두셨다가 카톡으로 말씀해 주세요</p>
             </div>
           </div>
@@ -436,9 +458,30 @@ export default function RunMatch() {
                     등록하시는 사진과 휴대폰 번호는 웹사이트에 절대 공개되지 않으며, 매칭 성사 시 본인 동의 하에만 연결됩니다.
                   </div>
 
+                  {/* 1. 휴대폰 번호 필수 입력 칸 */}
+                  <div className="p-4 rounded-2xl bg-neutral-900 text-white space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold">
+                        휴대폰 번호 (필수) <span className="text-rose-400">*</span>
+                      </label>
+                      <span className="text-[10px] text-neutral-400">매니저 카톡 연락용</span>
+                    </div>
+                    <input 
+                      type="tel" 
+                      inputMode="numeric"
+                      required
+                      maxLength={13}
+                      placeholder="010-0000-0000"
+                      value={formData.phone}
+                      onChange={e => setFormData({...formData, phone: formatPhoneNumber(e.target.value)})}
+                      className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold tracking-wide focus:outline-none"
+                    />
+                  </div>
+
+                  {/* 2. 프로필 사진 2장 */}
                   <div>
                     <label className="block text-xs font-bold text-neutral-900 mb-2">
-                      프로필 사진 2장 (필수)
+                      프로필 사진 2장 (필수) <span className="text-rose-500">*</span>
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                       {[0, 1].map(idx => (
@@ -462,39 +505,28 @@ export default function RunMatch() {
                     </div>
                   </div>
 
-                  {/* 휴대폰 번호(필수) & 카카오톡 ID(선택) */}
-                  <div className="space-y-2.5">
+                  {/* 3. 닉네임 & 카카오톡 ID */}
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[11px] font-semibold text-neutral-600 mb-1">휴대폰 번호 (매칭 연락용 필수) *</label>
+                      <label className="block text-[11px] font-semibold text-neutral-600 mb-1">닉네임 (또는 이름) *</label>
                       <input 
-                        type="tel" 
-                        placeholder="010-0000-0000"
-                        value={formData.phone}
-                        onChange={e => setFormData({...formData, phone: formatPhoneNumber(e.target.value)})}
-                        className="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-neutral-900"
+                        type="text" 
+                        required
+                        placeholder="예: 상민"
+                        value={formData.nickname}
+                        onChange={e => setFormData({...formData, nickname: e.target.value})}
+                        className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-neutral-600 mb-1">닉네임 (또는 이름) *</label>
-                        <input 
-                          type="text" 
-                          placeholder="예: 상민"
-                          value={formData.nickname}
-                          onChange={e => setFormData({...formData, nickname: e.target.value})}
-                          className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-neutral-600 mb-1">카카오톡 ID (선택)</label>
-                        <input 
-                          type="text" 
-                          placeholder="카톡 ID (있을 경우)"
-                          value={formData.kakao_id}
-                          onChange={e => setFormData({...formData, kakao_id: e.target.value})}
-                          className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-600 mb-1">카카오톡 ID (선택)</label>
+                      <input 
+                        type="text" 
+                        placeholder="카톡 ID (있을 경우)"
+                        value={formData.kakao_id}
+                        onChange={e => setFormData({...formData, kakao_id: e.target.value})}
+                        className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
+                      />
                     </div>
                   </div>
 
@@ -503,6 +535,7 @@ export default function RunMatch() {
                       <label className="block text-[11px] font-semibold text-neutral-500 mb-1">나이 *</label>
                       <input 
                         type="number" 
+                        required
                         placeholder="32"
                         value={formData.age}
                         onChange={e => setFormData({...formData, age: e.target.value})}
@@ -590,7 +623,7 @@ export default function RunMatch() {
 
                   <div>
                     <div className="flex justify-between items-center mb-1.5">
-                      <label className="text-xs font-bold text-neutral-900">내 성격 키워드 (정확히 3개)</label>
+                      <label className="text-xs font-bold text-neutral-900">내 성격 키워드 (정확히 3개) *</label>
                       <span className="text-[11px] font-mono font-semibold text-neutral-500">
                         {formData.personality.length} / 3
                       </span>
@@ -674,6 +707,7 @@ export default function RunMatch() {
                     <label className="block text-xs font-bold text-neutral-900 mb-1.5">자기소개 *</label>
                     <textarea 
                       rows={3}
+                      required
                       placeholder="평소 러닝 스타일, 직업이나 라이프스타일을 자유롭게 적어주세요."
                       value={formData.bio}
                       onChange={e => setFormData({...formData, bio: e.target.value})}
@@ -795,9 +829,14 @@ export default function RunMatch() {
                         <div className="font-bold text-base text-neutral-900">
                           {formData.nickname}, {formData.age} ({formData.gender})
                         </div>
-                        <div className="text-xs font-mono text-neutral-800">
-                          연락처: {formData.phone} {formData.kakao_id && `(${formData.kakao_id})`}
+                        <div className="text-xs font-mono font-bold text-neutral-900">
+                          휴대폰: {formData.phone}
                         </div>
+                        {formData.kakao_id && (
+                          <div className="text-xs font-mono text-neutral-500">
+                            카톡 ID: {formData.kakao_id}
+                          </div>
+                        )}
                         <div className="text-xs text-neutral-500 mt-0.5">
                           {formData.region} · 페이스 {formData.pace} · {formData.mbti}
                         </div>
