@@ -252,6 +252,7 @@ export default function RunMatch() {
       const { error: insertError } = await supabase
         .from('runner_profiles')
         .insert([{
+          name: formData.nickname, // 기존 name 컬럼 호환용 추가
           nickname: formData.nickname,
           age: parseInt(formData.age, 10),
           gender: formData.gender,
