@@ -12,20 +12,19 @@ export default function Home() {
   const [seconds, setSeconds] = useState('');
   const [calculatedPace, setCalculatedPace] = useState(null);
 
-  // 🏃‍♂️ 마라톤 대회 및 커뮤니티 상태
+  // 🏃‍♂️ 마라톤 대회, 커뮤니티, 소개팅 프리뷰 상태
   const [upcomingMarathons, setUpcomingMarathons] = useState([]);
   const [recentPosts, setRecentPosts] = useState([]);
+  const [featuredRunners, setFeaturedRunners] = useState([]);
 
   // 💬 실시간 익명 채팅 상태 (로컬 스토리지 연동)
   const chatEndRef = useRef(null);
   const [newChat, setNewChat] = useState('');
   
-  // 💡 닉네임을 로컬 스토리지에서 불러오거나 기본값 설정
   const [nickname, setNickname] = useState(() => {
     return localStorage.getItem('runner_nickname') || '익명러너';
   });
 
-  // 💡 채팅 내역을 로컬 스토리지에서 불러오거나 기본값 설정
   const [chatMessages, setChatMessages] = useState(() => {
     const saved = localStorage.getItem('runner_chats');
     if (saved) {
@@ -38,14 +37,12 @@ export default function Home() {
     ];
   });
 
-  // 💡 닉네임이나 채팅이 변경될 때마다 로컬 스토리지에 자동 저장
   useEffect(() => {
     localStorage.setItem('runner_nickname', nickname);
   }, [nickname]);
 
   useEffect(() => {
     localStorage.setItem('runner_chats', JSON.stringify(chatMessages));
-    // 채팅이 추가될 때마다 맨 아래로 자동 스크롤
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -66,6 +63,26 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // 1. 러닝 소개팅 등록 러너 프리뷰 불러오기
+    const fetchFeaturedRunners = async () => {
+      const { data, error } = await supabase
+        .from('runner_profiles')
+        .select('id, nickname, age, region, course, pace, verified, image_url')
+        .order('created_at', { ascending: false })
+        .limit(4);
+
+      if (!error && data && data.length > 0) {
+        setFeaturedRunners(data);
+      } else {
+        setFeaturedRunners([
+          { id: 'r1', nickname: '지은', age: 28, region: '성동구', course: '서울숲·뚝섬', pace: "5'40\"", verified: true, image_url: 'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&w=400&q=80' },
+          { id: 'r2', nickname: '현우', age: 31, region: '서초구', course: '반포한강', pace: "4'50\"", verified: true, image_url: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=400&q=80' },
+          { id: 'r3', nickname: '서연', age: 26, region: '송파구', course: '석촌호수', pace: "6'15\"", verified: false, image_url: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=400&q=80' }
+        ]);
+      }
+    };
+
+    // 2. 다가오는 마라톤 대회 불러오기
     const fetchUpcomingMarathons = async () => {
       const { data, error } = await supabase.from('marathons').select('*');
       if (!error && data) {
@@ -89,9 +106,14 @@ export default function Home() {
       }
     };
 
+    // 3. 커뮤니티 최신글 불러오기 (실제 DB 테이블명 community_posts 반영)
     const fetchRecentPosts = async () => {
       try {
-        const { data, error } = await supabase.from('community_posts').select('*').order('created_at', { ascending: false }).limit(3);
+        const { data, error } = await supabase
+          .from('community_posts')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(3);
         if (!error && data && data.length > 0) {
           setRecentPosts(data);
         } else {
@@ -106,6 +128,7 @@ export default function Home() {
       }
     };
 
+    fetchFeaturedRunners();
     fetchUpcomingMarathons();
     fetchRecentPosts();
   }, []);
@@ -136,157 +159,211 @@ export default function Home() {
   return (
     <div className="max-w-2xl mx-auto p-4 bg-[#F8FAFC] min-h-screen pb-24 font-sans">
       
-      {/* 👋 1. 웰컴 그리팅 & 오늘의 러닝 팁 */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-5 flex items-center justify-between">
-        <div>
-          <span className="inline-block bg-blue-50 text-blue-600 text-[11px] font-extrabold px-2.5 py-1 rounded-full mb-2">
-            🏃‍♂️ 러너스테이션에 오신 것을 환영해요!
-          </span>
-          <h1 className="text-lg font-black text-gray-900 leading-snug">
-            오늘도 부상 없이<br />즐거운 러닝 되세요!
+      {/* 🎯 1. 메인 히어로 배너: 러닝 소개팅 (PACE MATE) 전면 배치 */}
+      <div 
+        onClick={() => navigate('/match')}
+        className="bg-neutral-900 text-white rounded-3xl p-6 shadow-md mb-5 cursor-pointer group relative overflow-hidden"
+      >
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-3">
+            <span className="inline-block bg-white/15 backdrop-blur-sm text-white text-[11px] font-bold px-2.5 py-1 rounded-full tracking-wide">
+              PACE MATE · 1:1 러닝 매칭
+            </span>
+            <span className="text-xs text-neutral-400 group-hover:text-white transition-colors font-semibold">
+              바로가기 →
+            </span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight leading-snug mb-1.5">
+            같은 페이스, 같은 코스를 달리는<br />러너와의 자연스러운 만남
           </h1>
+          <p className="text-xs text-neutral-400 font-medium">
+            GPS 기록 인증 러너 프로필 확인 · 매니저 1:1 카카오톡 주선
+          </p>
+        </div>
+      </div>
+
+      {/* 👟 2. 오늘의 추천 러너 미리보기 스트립 */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-neutral-200/80 mb-5">
+        <div className="flex justify-between items-center mb-3.5">
+          <div>
+            <h2 className="text-sm font-bold text-neutral-900">지금 매칭 가능한 러너</h2>
+            <p className="text-[11px] text-neutral-400">카드를 누르면 상세 프로필과 페이스 정보를 볼 수 있어요</p>
+          </div>
           <button 
-            onClick={() => navigate('/guide')}
-            className="mt-3 text-xs font-bold text-gray-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
+            onClick={() => navigate('/match')}
+            className="text-xs font-bold text-neutral-900 bg-neutral-100 hover:bg-neutral-200 px-3 py-1.5 rounded-full transition-colors"
           >
-            <span>📋 대회 D-21 준비 가이드 보러가기</span>
-            <span>→</span>
+            전체보기
           </button>
         </div>
-        <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-4xl shadow-inner shrink-0">
-          👟
+
+        <div className="grid grid-cols-3 gap-2.5">
+          {featuredRunners.slice(0, 3).map((runner) => (
+            <div 
+              key={runner.id}
+              onClick={() => navigate('/match')}
+              className="cursor-pointer group border border-neutral-200 rounded-2xl overflow-hidden bg-white hover:border-neutral-400 transition-all"
+            >
+              <div className="relative aspect-[3/4] bg-neutral-100 overflow-hidden">
+                <img 
+                  src={runner.image_url} 
+                  alt={runner.nickname}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
+                {runner.verified && (
+                  <span className="absolute top-2 left-2 bg-white/90 text-neutral-900 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                    인증됨
+                  </span>
+                )}
+                <div className="absolute bottom-2 left-2.5 right-2 text-white">
+                  <div className="text-xs font-bold truncate">
+                    {runner.nickname}, {runner.age}
+                  </div>
+                  <div className="text-[10px] text-white/80 font-mono">
+                    {runner.pace} · {runner.region}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* 🧩 2. 핵심 기능 퀵 메뉴 */}
+      {/* 🧩 3. 핵심 기능 퀵 메뉴 (러닝 소개팅 1번 배치) */}
       <div className="grid grid-cols-2 gap-3 mb-6">
-        <div onClick={() => navigate('/training')} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl mb-3 group-hover:scale-110 transition-transform">🤖</div>
-          <h3 className="font-black text-gray-900 text-sm mb-0.5">AI 런-코치 분석</h3>
-          <p className="text-[11px] font-bold text-gray-400">기록 캡처 올리고 숙제 받기</p>
+        <div onClick={() => navigate('/match')} className="bg-white p-4 rounded-2xl shadow-sm border border-neutral-200/80 cursor-pointer hover:border-neutral-900 transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-extrabold text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded">MAIN</span>
+            <span className="text-xs text-neutral-400 group-hover:translate-x-0.5 transition-transform">→</span>
+          </div>
+          <h3 className="font-bold text-neutral-900 text-sm mb-0.5">러닝 소개팅 (PACE MATE)</h3>
+          <p className="text-[11px] font-medium text-neutral-500">우리 동네 페이스 메이트 매칭</p>
         </div>
-        <div onClick={() => navigate('/match')} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:border-pink-300 hover:shadow-md transition-all group">
-          <div className="w-10 h-10 rounded-xl bg-pink-50 text-pink-500 flex items-center justify-center text-xl mb-3 group-hover:scale-110 transition-transform">💖</div>
-          <h3 className="font-black text-gray-900 text-sm mb-0.5">러닝 짝꿍 찾기</h3>
-          <p className="text-[11px] font-bold text-gray-400">우리 동네 같은 페이스 매칭</p>
+
+        <div onClick={() => navigate('/map')} className="bg-white p-4 rounded-2xl shadow-sm border border-neutral-200/80 cursor-pointer hover:border-blue-400 transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">MAP</span>
+            <span className="text-xs text-neutral-400 group-hover:translate-x-0.5 transition-transform">→</span>
+          </div>
+          <h3 className="font-bold text-neutral-900 text-sm mb-0.5">러닝 오아시스</h3>
+          <p className="text-[11px] font-medium text-neutral-500">한강/하천 아리수 급수대 지도</p>
         </div>
-        <div onClick={() => navigate('/map')} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:border-cyan-300 hover:shadow-md transition-all group">
-          <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center text-xl mb-3 group-hover:scale-110 transition-transform">💧</div>
-          <h3 className="font-black text-gray-900 text-sm mb-0.5">러닝 오아시스</h3>
-          <p className="text-[11px] font-bold text-gray-400">한강/하천 아리수 위치 확인</p>
+
+        <div onClick={() => navigate('/training')} className="bg-white p-4 rounded-2xl shadow-sm border border-neutral-200/80 cursor-pointer hover:border-indigo-400 transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">AI COACH</span>
+            <span className="text-xs text-neutral-400 group-hover:translate-x-0.5 transition-transform">→</span>
+          </div>
+          <h3 className="font-bold text-neutral-900 text-sm mb-0.5">AI 런-코치 분석</h3>
+          <p className="text-[11px] font-medium text-neutral-500">기록 캡처 올리고 훈련 처방받기</p>
         </div>
-        <div onClick={() => navigate('/crew')} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all group">
-          <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center text-xl mb-3 group-hover:scale-110 transition-transform">🔥</div>
-          <h3 className="font-black text-gray-900 text-sm mb-0.5">우리 동네 크루</h3>
-          <p className="text-[11px] font-bold text-gray-400">함께 달리는 즐거움 찾기</p>
+
+        <div onClick={() => navigate('/crew')} className="bg-white p-4 rounded-2xl shadow-sm border border-neutral-200/80 cursor-pointer hover:border-orange-400 transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-extrabold text-orange-600 bg-orange-50 px-2 py-0.5 rounded">CREW</span>
+            <span className="text-xs text-neutral-400 group-hover:translate-x-0.5 transition-transform">→</span>
+          </div>
+          <h3 className="font-bold text-neutral-900 text-sm mb-0.5">우리 동네 크루</h3>
+          <p className="text-[11px] font-medium text-neutral-500">함께 달리는 그룹 러닝 찾기</p>
         </div>
       </div>
 
-      {/* 💬 3. 실시간 익명 러너 톡 */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-6 flex flex-col">
+      {/* 💬 4. 실시간 익명 러너 톡 */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-neutral-200/80 mb-6 flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
-            <h2 className="text-base font-black text-gray-900">실시간 러너 톡</h2>
+            <h2 className="text-sm font-bold text-neutral-900">실시간 러너 톡</h2>
           </div>
-          <span className="text-[10px] font-bold text-gray-400">익명 접속 중 🕵️</span>
+          <span className="text-[11px] font-medium text-neutral-400">익명 라운지</span>
         </div>
 
-        {/* 채팅창 영역 */}
-        <div className="bg-[#F8FAFC] rounded-2xl p-4 h-64 overflow-y-auto flex flex-col gap-3 border border-gray-100/50">
+        <div className="bg-[#F8FAFC] rounded-2xl p-4 h-60 overflow-y-auto flex flex-col gap-3 border border-neutral-100">
           {chatMessages.map((msg) => (
             <div key={msg.id} className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'}`}>
-              <span className={`text-[10px] font-bold text-gray-500 mb-1 ${msg.isMine ? 'mr-1' : 'ml-1'}`}>
+              <span className={`text-[10px] font-semibold text-neutral-500 mb-1 ${msg.isMine ? 'mr-1' : 'ml-1'}`}>
                 {msg.name}
               </span>
               <div className="flex items-end gap-1.5">
-                {msg.isMine && <span className="text-[9px] text-gray-400 font-bold mb-1">{msg.time}</span>}
-                <div className={`px-3.5 py-2 max-w-[220px] text-[13px] font-bold leading-relaxed shadow-sm ${
+                {msg.isMine && <span className="text-[9px] text-neutral-400 font-medium mb-1">{msg.time}</span>}
+                <div className={`px-3.5 py-2 max-w-[220px] text-[13px] font-medium leading-relaxed ${
                   msg.isMine 
-                    ? 'bg-blue-500 text-white rounded-l-2xl rounded-tr-2xl' 
-                    : 'bg-white border border-gray-200/60 text-gray-800 rounded-r-2xl rounded-tl-2xl'
+                    ? 'bg-neutral-900 text-white rounded-l-2xl rounded-tr-2xl' 
+                    : 'bg-white border border-neutral-200 text-neutral-800 rounded-r-2xl rounded-tl-2xl'
                 }`}>
                   {msg.text}
                 </div>
-                {!msg.isMine && <span className="text-[9px] text-gray-400 font-bold mb-1">{msg.time}</span>}
+                {!msg.isMine && <span className="text-[9px] text-neutral-400 font-medium mb-1">{msg.time}</span>}
               </div>
             </div>
           ))}
           <div ref={chatEndRef} />
         </div>
 
-        {/* 채팅 입력 영역 (닉네임 설정 포함) */}
         <form onSubmit={handleSendChat} className="mt-3 flex gap-2">
-          {/* 💡 닉네임 입력칸 추가 */}
           <input 
             type="text" 
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
             placeholder="닉네임"
             maxLength={8}
-            className="w-20 bg-gray-50 text-[12px] font-bold border border-gray-200 rounded-xl px-2 py-2.5 outline-none focus:border-blue-500 transition-colors text-center shrink-0"
+            className="w-20 bg-neutral-50 text-[12px] font-semibold border border-neutral-200 rounded-xl px-2 py-2.5 outline-none focus:border-neutral-900 transition-colors text-center shrink-0"
           />
           <input 
             type="text" 
             value={newChat}
             onChange={(e) => setNewChat(e.target.value)}
-            placeholder="메시지를 입력하세요!" 
-            className="flex-1 bg-gray-50 text-[13px] font-bold border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-blue-500 transition-colors"
+            placeholder="메시지를 입력하세요" 
+            className="flex-1 bg-neutral-50 text-[13px] font-medium border border-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-neutral-900 transition-colors"
           />
           <button 
             type="submit"
-            className="bg-gray-900 hover:bg-gray-800 text-white px-3 sm:px-4 py-2.5 rounded-xl text-sm font-black transition-colors shrink-0"
+            className="bg-neutral-900 hover:bg-neutral-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-colors shrink-0"
           >
             전송
           </button>
         </form>
       </div>
 
-      {/* 📝 4. 커뮤니티 프리뷰 */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-6">
+      {/* 📝 5. 커뮤니티 프리뷰 */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-neutral-200/80 mb-6">
         <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🔥</span>
-            <h2 className="text-base font-black text-gray-900">오늘의 인기글</h2>
-          </div>
-          <button onClick={() => navigate('/community')} className="text-xs font-bold text-blue-600 hover:underline">
-            더보기
+          <h2 className="text-sm font-bold text-neutral-900">오늘의 러닝 이야기</h2>
+          <button onClick={() => navigate('/community')} className="text-xs font-semibold text-neutral-500 hover:text-neutral-900">
+            더보기 →
           </button>
         </div>
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-neutral-100">
           {recentPosts.map((post) => (
             <div key={post.id} onClick={() => navigate('/community')} className="py-3 first:pt-0 last:pb-0 cursor-pointer group flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 overflow-hidden">
-                <span className="bg-gray-100 text-gray-600 text-[10px] font-extrabold px-2 py-0.5 rounded-md shrink-0">{post.tag || '자유'}</span>
-                <p className="text-xs font-bold text-gray-800 truncate group-hover:text-blue-600 transition-colors">{post.title}</p>
+                <span className="bg-neutral-100 text-neutral-600 text-[10px] font-bold px-2 py-0.5 rounded shrink-0">{post.tag || '자유'}</span>
+                <p className="text-xs font-medium text-neutral-800 truncate group-hover:text-black transition-colors">{post.title}</p>
               </div>
-              <div className="flex items-center gap-2 text-[11px] font-bold text-gray-400 shrink-0">
-                <span>❤️ {post.likes || 0}</span>
-                <span>💬 {post.comments || 0}</span>
+              <div className="flex items-center gap-2 text-[11px] font-medium text-neutral-400 shrink-0">
+                <span>좋아요 {post.likes || 0}</span>
+                <span>댓글 {post.comments || 0}</span>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ⏱️ 5. 컴팩트 페이스 계산기 */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-6">
+      {/* ⏱️ 6. 컴팩트 페이스 계산기 */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-neutral-200/80 mb-6">
         <div className="flex justify-between items-center mb-4">
-          <div>
-            <h2 className="text-base font-black text-gray-900 flex items-center gap-1.5">
-              <span>⏱️</span> 간편 페이스 계산기
-            </h2>
-          </div>
-          <div className="flex bg-gray-100 p-1 rounded-xl">
+          <h2 className="text-sm font-bold text-neutral-900">간편 페이스 계산기</h2>
+          <div className="flex bg-neutral-100 p-1 rounded-xl">
             {['10K', 'HALF', 'FULL'].map(dist => (
               <button
                 key={dist}
                 onClick={() => setDistance(dist)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
-                  distance === dist ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                  distance === dist ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-800'
                 }`}
               >
                 {dist}
@@ -296,49 +373,45 @@ export default function Home() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-3">
-          <div className="w-full sm:flex-1 flex items-center justify-center gap-1.5 bg-gray-50 p-3 rounded-2xl border border-gray-200/80">
-            <input type="number" value={hours} onChange={e => setHours(e.target.value)} placeholder="0" className="w-10 bg-transparent text-gray-900 text-lg font-black outline-none border-b-2 border-gray-300 focus:border-blue-500 text-center" />
-            <span className="text-gray-500 text-xs font-bold mr-1">시간</span>
-            <input type="number" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="50" className="w-10 bg-transparent text-gray-900 text-lg font-black outline-none border-b-2 border-gray-300 focus:border-blue-500 text-center" />
-            <span className="text-gray-500 text-xs font-bold mr-1">분</span>
-            <input type="number" value={seconds} onChange={e => setSeconds(e.target.value)} placeholder="0" className="w-10 bg-transparent text-gray-900 text-lg font-black outline-none border-b-2 border-gray-300 focus:border-blue-500 text-center" />
-            <span className="text-gray-500 text-xs font-bold">초</span>
+          <div className="w-full sm:flex-1 flex items-center justify-center gap-1.5 bg-neutral-50 p-3 rounded-2xl border border-neutral-200">
+            <input type="number" value={hours} onChange={e => setHours(e.target.value)} placeholder="0" className="w-10 bg-transparent text-neutral-900 text-base font-mono font-bold outline-none border-b border-neutral-300 focus:border-neutral-900 text-center" />
+            <span className="text-neutral-500 text-xs font-medium mr-1">시간</span>
+            <input type="number" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="50" className="w-10 bg-transparent text-neutral-900 text-base font-mono font-bold outline-none border-b border-neutral-300 focus:border-neutral-900 text-center" />
+            <span className="text-neutral-500 text-xs font-medium mr-1">분</span>
+            <input type="number" value={seconds} onChange={e => setSeconds(e.target.value)} placeholder="0" className="w-10 bg-transparent text-neutral-900 text-base font-mono font-bold outline-none border-b border-neutral-300 focus:border-neutral-900 text-center" />
+            <span className="text-neutral-500 text-xs font-medium">초</span>
           </div>
-          <div className="w-full sm:w-auto bg-blue-50 border border-blue-100 px-5 py-3 rounded-2xl flex items-center justify-between sm:justify-center gap-3 shrink-0">
-            <span className="text-[11px] font-extrabold text-blue-500">목표 페이스</span>
-            <span className="text-xl font-black text-blue-700">{calculatedPace ? `${calculatedPace}/km` : `5'00"/km`}</span>
+          <div className="w-full sm:w-auto bg-neutral-900 text-white px-5 py-3 rounded-2xl flex items-center justify-between sm:justify-center gap-3 shrink-0">
+            <span className="text-[11px] font-medium text-neutral-400">목표 페이스</span>
+            <span className="text-lg font-mono font-bold">{calculatedPace ? `${calculatedPace}/km` : `5'00"/km`}</span>
           </div>
         </div>
       </div>
 
-      {/* 📅 6. 다가오는 마라톤 일정 */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+      {/* 📅 7. 다가오는 마라톤 일정 */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-neutral-200/80">
         <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">⚡</span>
-            <h2 className="text-base font-black text-gray-900">임박한 마라톤 대회</h2>
-          </div>
-          <button onClick={() => navigate('/marathons')} className="text-xs font-bold text-gray-400 hover:text-gray-900">전체일정 →</button>
+          <h2 className="text-sm font-bold text-neutral-900">임박한 마라톤 대회</h2>
+          <button onClick={() => navigate('/marathons')} className="text-xs font-semibold text-neutral-500 hover:text-neutral-900">전체일정 →</button>
         </div>
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {upcomingMarathons.length > 0 ? (
             upcomingMarathons.map((event) => (
-              <div key={event.id} onClick={() => navigate(`/marathon/${event.id}`)} className="flex items-center justify-between p-3 bg-gray-50/70 hover:bg-blue-50/50 rounded-2xl border border-gray-100 cursor-pointer transition-colors">
+              <div key={event.id} onClick={() => navigate(`/marathon/${event.id}`)} className="flex items-center justify-between p-3 bg-neutral-50 hover:bg-neutral-100 rounded-2xl border border-neutral-100 cursor-pointer transition-colors">
                 <div className="flex items-center gap-3 overflow-hidden">
-                  <span className={`px-2.5 py-1 text-[11px] font-black text-white rounded-lg shrink-0 ${event.d_day_calc <= 7 ? 'bg-orange-500' : 'bg-blue-500'}`}>
+                  <span className={`px-2 py-0.5 text-[11px] font-mono font-bold text-white rounded shrink-0 ${event.d_day_calc <= 7 ? 'bg-orange-600' : 'bg-neutral-800'}`}>
                     {event.d_day_calc === 0 ? 'D-Day' : `D-${event.d_day_calc}`}
                   </span>
-                  <span className="font-extrabold text-gray-800 text-xs sm:text-sm truncate">{event.title}</span>
+                  <span className="font-semibold text-neutral-800 text-xs sm:text-sm truncate">{event.title}</span>
                 </div>
-                <div className="flex items-center gap-1 text-gray-400 text-xs font-bold shrink-0 pl-2">
-                  <span>🗓️</span>
-                  <span>{event.display_date}</span>
-                </div>
+                <span className="text-neutral-400 text-xs font-mono font-medium shrink-0 pl-2">
+                  {event.display_date}
+                </span>
               </div>
             ))
           ) : (
-            <div className="text-center py-6 bg-gray-50 rounded-2xl">
-              <span className="text-gray-400 text-xs font-bold">현재 예정된 대회가 없습니다.</span>
+            <div className="text-center py-6 bg-neutral-50 rounded-2xl">
+              <span className="text-neutral-400 text-xs font-medium">현재 예정된 대회가 없습니다.</span>
             </div>
           )}
         </div>
