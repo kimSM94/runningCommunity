@@ -133,14 +133,16 @@ export default function App() {
         >
           🔄 현 지도에서 검색
         </button>
-      )}
-
+            )}
+      <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-30 w-full max-w-md px-5 pb-[env(safe-area-inset-bottom)]">
       <button 
-        onClick={() => setShowOasis(!showOasis)} 
-        className={`absolute bottom-10 left-1/2 transform -translate-x-1/2 z-10 font-bold py-4 px-8 rounded-full shadow-xl transition-all duration-300 whitespace-nowrap text-lg flex items-center gap-2 ${showOasis ? 'bg-gray-800 text-white hover:bg-gray-900' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-      >
-        {showOasis ? '👀 오아시스 숨기기' : '💧 주변 오아시스 찾기'}
-      </button>
+              onClick={() => setShowOasis(!showOasis)} 
+              className="w-full py-3.5 bg-[#18181B] hover:bg-neutral-800 text-white text-sm font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+            >
+              {showOasis ? '👀 오아시스 숨기기' : '💧 주변 오아시스 찾기'}
+            </button>
+      </div>
+      
     </div>
   );
 }
