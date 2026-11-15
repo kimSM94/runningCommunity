@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient';
 export default function Home() {
   const navigate = useNavigate();
 
-  // 전체 메뉴 드로어 상태 (기존 9개 메뉴를 깔끔하게 수납)
+  // 전체 메뉴 드로어 상태
   const [menuOpen, setMenuOpen] = useState(false);
 
   // ⏱️ 페이스 계산기 상태
@@ -20,114 +20,152 @@ export default function Home() {
   const [upcomingMarathons, setUpcomingMarathons] = useState([]);
   const [recentPosts, setRecentPosts] = useState([]);
 
-  // 💬 실시간 익명 러너 톡 상태
+  // 💬 실시간 익명 러너 톡 상태 (Supabase Realtime 연동)
   const chatEndRef = useRef(null);
   const [newChat, setNewChat] = useState('');
   const [nickname, setNickname] = useState(() => localStorage.getItem('runner_nickname') || '익명러너');
-  const [chatMessages, setChatMessages] = useState(() => {
-    const saved = localStorage.getItem('runner_chats');
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: 1, name: '달리는 야돈', text: '오늘 저녁 뚝섬 한강공원 뛰기 딱 좋은 날씨네요!', isMine: false, time: '18:30' },
-      { id: 2, name: '반포530', text: '주말에 5K 가볍게 같이 뛸 메이트 찾고 있어요 ㅎㅎ', isMine: false, time: '18:32' },
-    ];
-  });
+  const [chatMessages, setChatMessages] = useState([]);
 
   useEffect(() => {
     localStorage.setItem('runner_nickname', nickname);
   }, [nickname]);
 
+  const formatChatTime = (isoString) => {
+    const d = isoString ? new Date(isoString) : new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  // 1. 실시간 익명 채팅 초기 로드 & Supabase Realtime 구독
   useEffect(() => {
-    localStorage.setItem('runner_chats', JSON.stringify(chatMessages));
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    const fetchChats = async () => {
+      const { data, error } = await supabase
+        .from('runner_chats')
+        .select('*')
+        .order('created_at', { ascending: true })
+        .limit(50);
+
+      if (!error && data) {
+        setChatMessages(
+          data.map((row) => ({
+            id: row.id,
+            name: row.nickname,
+            text: row.message,
+            time: formatChatTime(row.created_at),
+          }))
+        );
+      }
+    };
+
+    fetchChats();
+
+    const channel = supabase
+      .channel('public:runner_chats')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'runner_chats' },
+        (payload) => {
+          const newRow = payload.new;
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === newRow.id)) return prev;
+            return [
+              ...prev,
+              {
+                id: newRow.id,
+                name: newRow.nickname,
+                text: newRow.message,
+                time: formatChatTime(newRow.created_at),
+              },
+            ];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // 채팅창 스크롤 하단 유지 (최초 로딩 시 페이지 전체 점프 방지 위해 컨테이너 내부 스크롤만 이동)
+  useEffect(() => {
+    if (chatEndRef.current && chatMessages.length > 0) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [chatMessages]);
 
-  const handleSendChat = (e) => {
+  const handleSendChat = async (e) => {
     e.preventDefault();
     if (!newChat.trim()) return;
-    const now = new Date();
-    const timeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    setChatMessages([...chatMessages, { id: Date.now(), name: nickname, text: newChat, isMine: true, time: timeString }]);
+
+    const senderName = nickname.trim() || '익명러너';
+    const messageText = newChat.trim();
     setNewChat('');
+
+    const { error } = await supabase
+      .from('runner_chats')
+      .insert([{ nickname: senderName, message: messageText }]);
+
+    if (error) {
+      console.error('채팅 전송 실패:', error);
+      alert('메시지 전송 중 오류가 발생했습니다. Supabase runner_chats 테이블 설정을 확인해 주세요.');
+    }
   };
 
+  // 2. 매칭 풀 통계, 다가오는 마라톤, 커뮤니티 최신글 로드
   useEffect(() => {
-    // 1. 실제 매칭 풀 통계 반영
     const fetchPoolStats = async () => {
       const { data, error } = await supabase.from('runner_profiles').select('gender');
       if (!error && data && data.length > 0) {
-        const m = data.filter(d => d.gender === '남성').length;
-        const f = data.filter(d => d.gender === '여성').length;
-        // 초기 모수 보정 표시
+        const m = data.filter((d) => d.gender === '남성').length;
+        const f = data.filter((d) => d.gender === '여성').length;
         setPoolStats({
           total: data.length + 18,
           male: m + 9,
-          female: f + 9
+          female: f + 9,
         });
       }
     };
 
-    // 2. 다가오는 마라톤 대회
     const fetchUpcomingMarathons = async () => {
       const { data, error } = await supabase.from('marathons').select('*');
       if (!error && data) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const processed = data
-          .map(event => {
+          .map((event) => {
             const eventDate = new Date(event.event_date);
             eventDate.setHours(0, 0, 0, 0);
             const diffDays = Math.ceil((eventDate - today) / (1000 * 60 * 60 * 24));
             return { ...event, d_day_calc: diffDays, display_date: `${eventDate.getMonth() + 1}.${eventDate.getDate()}` };
           })
-          .filter(event => event.d_day_calc >= 0)
+          .filter((event) => event.d_day_calc >= 0)
           .sort((a, b) => a.d_day_calc - b.d_day_calc)
           .slice(0, 3);
         setUpcomingMarathons(processed);
       }
     };
 
-    // 3. 커뮤니티 최신글
-   const fetchRecentPosts = async () => {
+    const fetchRecentPosts = async () => {
+      // ⚠️ 실제 커뮤니티 페이지에서 사용하는 테이블명으로 맞춰주세요 (예: community_posts 또는 posts)
       const { data, error } = await supabase
-        .from('anonymous_posts')
+        .from('community_posts')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(3);
 
-      const realPosts = (!error && data) ? data : [];
-
-      console.log('홈에서 불러온 community_posts:', data, error);
-
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         setRecentPosts(data);
       } else {
         setRecentPosts([]);
       }
-
-      // 디자인이 깨지지 않도록, DB 글이 3개 미만일 경우 예비용 샘플로 채움
-      if (realPosts.length < 3) {
-        const fallbacks = [
-          { id: 'f1', tag: '러닝메이트', title: '이번 주 주말 아침 반포한강 5K 가볍게 뛰실 분?', comments: 5 },
-          { id: 'f2', tag: '코스추천', title: '소개팅 첫 러닝 코스로 서울숲-뚝섬 구간 어떨까요?', comments: 14 },
-          { id: 'f3', tag: '기록인증', title: '10km 50분 언더 달성! 꾸준함이 답이네요', comments: 19 },
-        ];
-        
-        // 실제 데이터를 먼저 넣고, 3개가 안 되는 빈 공간만큼만 fallbacks에서 가져와 합침
-        const combined = [...realPosts, ...fallbacks.slice(realPosts.length, 3)];
-        setRecentPosts(combined);
-      } else {
-        setRecentPosts(realPosts);
-      }
     };
+
     fetchPoolStats();
     fetchUpcomingMarathons();
     fetchRecentPosts();
   }, []);
 
-  // 페이스 계산 로직
+  // 3. 목표 페이스 계산 로직
   useEffect(() => {
     const h = parseInt(hours) || 0;
     const m = parseInt(minutes) || 0;
@@ -157,10 +195,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#F5F4F0] text-[#18181B] font-sans">
-      {/* 모바일·데스크톱 일체형 중앙 컨테이너 */}
       <div className="max-w-lg mx-auto bg-[#FAF9F6] min-h-screen border-x border-[#E6E4DD] pb-24 relative">
         
-        {/* 1. 브랜드 전용 미니멀 상단 헤더 (기존 파란색 바 대체) */}
+        {/* 1. 브랜드 전용 미니멀 상단 헤더 */}
         <header className="sticky top-0 z-30 bg-[#FAF9F6]/90 backdrop-blur-md border-b border-[#E6E4DD] px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#E05A47]" />
@@ -189,7 +226,7 @@ export default function Home() {
           </div>
         </header>
 
-        {/* 전체 서비스 드롭다운 서랍 (깔끔하게 정리된 메뉴) */}
+        {/* 전체 서비스 드롭다운 서랍 */}
         {menuOpen && (
           <div className="border-b border-[#E6E4DD] bg-white px-6 py-5 space-y-3 shadow-sm">
             <div className="text-[10px] font-bold uppercase tracking-widest text-[#71717A]">
@@ -215,7 +252,7 @@ export default function Home() {
 
         <main className="px-6 pt-7 space-y-8">
           
-          {/* 2. 에디토리얼 시그니처 히어로 섹션 (타 사이트와 완전히 다른 인상) */}
+          {/* 2. 에디토리얼 시그니처 히어로 섹션 */}
           <section className="space-y-5">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E05A47]/10 text-[#E05A47] text-[11px] font-bold">
               <span>100% 사진 비공개 · 매니저 1:1 카카오톡 주선</span>
@@ -266,7 +303,7 @@ export default function Home() {
 
           <hr className="border-[#E6E4DD]" />
 
-          {/* 3. 러닝 데이트 & 러너 툴킷 (가로 스크롤 / 2단 깔끔한 카드) */}
+          {/* 3. 러너 전용 유틸리티 4종 */}
           <section className="space-y-3">
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-extrabold tracking-tight text-[#18181B]">
@@ -342,37 +379,46 @@ export default function Home() {
             </div>
           </section>
 
-          {/* 4. 실시간 러너 라운지 (채팅 UI 리디자인) */}
+          {/* 4. 실시간 러너 라운지 (Supabase Realtime 익명 채팅) */}
           <section className="bg-white border border-[#E6E4DD] rounded-2xl p-5 space-y-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <h2 className="text-sm font-extrabold text-[#18181B]">실시간 러너 라운지</h2>
               </div>
-              <span className="text-[11px] text-[#71717A]">익명 오픈 톡</span>
+              <span className="text-[11px] text-[#71717A]">실시간 오픈 톡</span>
             </div>
 
             <div className="bg-[#FAF9F6] border border-[#E6E4DD] rounded-xl p-3.5 h-52 overflow-y-auto flex flex-col gap-2.5">
-              {chatMessages.map((msg) => (
-                <div key={msg.id} className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'}`}>
-                  <span className="text-[10px] font-semibold text-[#71717A] mb-0.5 px-1">
-                    {msg.name}
-                  </span>
-                  <div className="flex items-end gap-1.5">
-                    {msg.isMine && <span className="text-[9px] text-[#A1A1AA]">{msg.time}</span>}
-                    <div
-                      className={`px-3 py-2 max-w-[230px] text-xs leading-relaxed ${
-                        msg.isMine
-                          ? 'bg-[#18181B] text-white rounded-l-xl rounded-tr-xl'
-                          : 'bg-white border border-[#E6E4DD] text-[#18181B] rounded-r-xl rounded-tl-xl'
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
-                    {!msg.isMine && <span className="text-[9px] text-[#A1A1AA]">{msg.time}</span>}
-                  </div>
+              {chatMessages.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-[#A1A1AA]">
+                  첫 메시지를 남겨 러너들과 인사를 나눠보세요!
                 </div>
-              ))}
+              ) : (
+                chatMessages.map((msg) => {
+                  const isMine = msg.name === (nickname.trim() || '익명러너');
+                  return (
+                    <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                      <span className="text-[10px] font-semibold text-[#71717A] mb-0.5 px-1">
+                        {msg.name}
+                      </span>
+                      <div className="flex items-end gap-1.5">
+                        {isMine && <span className="text-[9px] text-[#A1A1AA]">{msg.time}</span>}
+                        <div
+                          className={`px-3 py-2 max-w-[230px] text-xs leading-relaxed break-words ${
+                            isMine
+                              ? 'bg-[#18181B] text-white rounded-l-xl rounded-tr-xl'
+                              : 'bg-white border border-[#E6E4DD] text-[#18181B] rounded-r-xl rounded-tl-xl'
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
+                        {!isMine && <span className="text-[9px] text-[#A1A1AA]">{msg.time}</span>}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
               <div ref={chatEndRef} />
             </div>
 
@@ -401,7 +447,7 @@ export default function Home() {
             </form>
           </section>
 
-          {/* 5. 간편 페이스 계산기 */}
+          {/* 5. 목표 페이스 계산기 */}
           <section className="bg-white border border-[#E6E4DD] rounded-2xl p-5 space-y-3.5">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-extrabold text-[#18181B]">목표 페이스 계산기</h2>
@@ -439,7 +485,7 @@ export default function Home() {
             </div>
           </section>
 
-          {/* 6. 커뮤니티 & 임박한 마라톤 요약 */}
+          {/* 6. 러너 커뮤니티 최신글 & 다가오는 대회 */}
           <section className="bg-white border border-[#E6E4DD] rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-extrabold text-[#18181B]">러너 커뮤니티 최신글</h2>
@@ -447,11 +493,7 @@ export default function Home() {
                 전체보기 →
               </button>
             </div>
-            {recentPosts.length === 0 ? (
-              <p className="text-xs text-[#71717A] py-3 text-center">
-                아직 등록된 게시글이 없습니다.
-              </p>
-            ) : (
+
             <div className="divide-y divide-[#F4F4F5]">
               {recentPosts.length === 0 ? (
                 <div className="py-4 text-center text-xs text-[#71717A]">
@@ -479,7 +521,6 @@ export default function Home() {
                 ))
               )}
             </div>
-            )}
 
             {upcomingMarathons.length > 0 && (
               <div className="pt-3 border-t border-[#E6E4DD] space-y-2">
