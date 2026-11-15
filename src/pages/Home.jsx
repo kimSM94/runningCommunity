@@ -91,7 +91,7 @@ export default function Home() {
 
     const fetchRecentPosts = async () => {
       try {
-        const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(3);
+        const { data, error } = await supabase.from('community_posts').select('*').order('created_at', { ascending: false }).limit(3);
         if (!error && data && data.length > 0) {
           setRecentPosts(data);
         } else {
