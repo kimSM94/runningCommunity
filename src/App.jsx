@@ -23,6 +23,7 @@ import MarathonDetail from './pages/MarathonDetail';
 import TrainingPlan from './pages/TrainingPlan'; 
 import RaceGuide from './pages/RaceGuide';
 import RunMatch from './pages/RunMatch';
+import AdminMatch from './pages/AdminMatch';
 
 // 🚀 모든 페이지 상단에 고정될 메뉴바 컴포넌트
 function GlobalHeaderAndNav() {
@@ -109,6 +110,7 @@ export default function App() {
         <Route path="/training" element={<TrainingPlan />} />
         <Route path="/guide" element={<RaceGuide />} />
         <Route path="/RunMatch" element={<RunMatch/>} />
+        <Route path="/admin/match" element={<AdminMatch />} />
       </Routes>
     </BrowserRouter>
   );
