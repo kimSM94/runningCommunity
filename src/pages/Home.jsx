@@ -92,16 +92,34 @@ export default function Home() {
     // 3. 커뮤니티 최신글
    const fetchRecentPosts = async () => {
       const { data, error } = await supabase
-        .from('community_posts')
+        .from('anonymous_posts')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(3);
 
+      const realPosts = (!error && data) ? data : [];
+
+      console.log('홈에서 불러온 community_posts:', data, error);
+
       if (!error && data && data.length > 0) {
         setRecentPosts(data);
       } else {
-        // 에러가 나거나 데이터가 없을 때만 보여줄 안전망 (필요 없으면 빈 배열 [] 로 두셔도 됩니다)
-        setRecentPosts([]); 
+        setRecentPosts([]);
+      }
+
+      // 디자인이 깨지지 않도록, DB 글이 3개 미만일 경우 예비용 샘플로 채움
+      if (realPosts.length < 3) {
+        const fallbacks = [
+          { id: 'f1', tag: '러닝메이트', title: '이번 주 주말 아침 반포한강 5K 가볍게 뛰실 분?', comments: 5 },
+          { id: 'f2', tag: '코스추천', title: '소개팅 첫 러닝 코스로 서울숲-뚝섬 구간 어떨까요?', comments: 14 },
+          { id: 'f3', tag: '기록인증', title: '10km 50분 언더 달성! 꾸준함이 답이네요', comments: 19 },
+        ];
+        
+        // 실제 데이터를 먼저 넣고, 3개가 안 되는 빈 공간만큼만 fallbacks에서 가져와 합침
+        const combined = [...realPosts, ...fallbacks.slice(realPosts.length, 3)];
+        setRecentPosts(combined);
+      } else {
+        setRecentPosts(realPosts);
       }
     };
     fetchPoolStats();
