@@ -238,14 +238,22 @@ export default function RunMatch() {
           const fileName = `${Date.now()}_${i}.${fileExt}`;
           const { error: uploadError } = await supabase.storage
             .from('runner-photos')
-            .upload(fileName, photoFiles[i]);
+            .upload(fileName, photoFiles[i], {
+              cacheControl: '3600',
+              upsert: false
+            });
 
-          if (!uploadError) {
-            const { data: publicUrlData } = supabase.storage
-              .from('runner-photos')
-              .getPublicUrl(fileName);
-            uploadedUrls[i] = publicUrlData.publicUrl;
+          if (uploadError) {
+            console.error(`사진 ${i + 1} 업로드 실패:`, uploadError);
+            alert(`사진 ${i + 1} 업로드 실패: ${uploadError.message}`);
+            setIsSubmitting(false);
+            return;
           }
+
+          const { data: publicUrlData } = supabase.storage
+            .from('runner-photos')
+            .getPublicUrl(fileName);
+          uploadedUrls[i] = publicUrlData.publicUrl;
         }
       }
 
